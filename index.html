@@ -207,20 +207,126 @@
     .coords { grid-template-columns: 1fr; }
     .inv-grid { grid-template-columns: repeat(9, 1fr); }
   }
+
+  /* ═══════════════════ HAMBURGER MENÜ ═══════════════════ */
+.hamburger-btn {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 28px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1001;
+  position: relative;
+}
+
+.hamburger-btn span {
+  width: 100%;
+  height: 2px;
+  background: #8b949e;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+/* Açıkken X animasyonu */
+.hamburger-btn.open span:nth-child(1) {
+  transform: rotate(45deg) translate(5px, 5px);
+}
+
+.hamburger-btn.open span:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger-btn.open span:nth-child(3) {
+  transform: rotate(-45deg) translate(7px, -7px);
+}
+
+/* ═══════════════════ MOBİL NAVBAR DÜZENİ ═══════════════════ */
+@media (max-width: 900px) {
+  #navbar {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    padding: 10px 16px;
+  }
+  
+  .hamburger-btn {
+    display: flex;
+    order: 3;
+  }
+  
+  .logo {
+    order: 1;
+  }
+  
+  .sys-status {
+    display: flex !important;
+    order: 2;
+    margin-left: auto;
+    margin-right: 12px;
+    font-size: 10px;
+    padding: 4px 10px;
+    gap: 8px;
+  }
+  
+  /* Menü overlay */
+  .nav-menu {
+    display: none;
+    position: fixed;
+    top: 52px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--panel);
+    flex-direction: column;
+    padding: 20px;
+    gap: 8px;
+    z-index: 999;
+    overflow-y: auto; /* KAYDIRMA EKLENDİ */
+    border-top: 1px solid var(--border);
+  }
+  
+  .nav-menu.open {
+    display: flex;
+  }
+  
+  .nav-menu .nav-btn {
+    width: 100%;
+    text-align: left;
+    padding: 14px 16px;
+    font-size: 13px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+}
 </style>
 </head>
 <body>
 
 <nav id="navbar">
   <div class="logo">⚡ GOD MODE v4</div>
-  <button class="nav-btn active" data-page="home">🏠 Ana Sayfa</button>
-  <button class="nav-btn" data-page="control">🎮 Kontrol</button>
-  <button class="nav-btn" data-page="terminal">📟 Terminal</button>
-  <button class="nav-btn" data-page="spam">💬 Spam</button>
-  <button class="nav-btn" data-page="inventory">🎒 Envanter</button>
-  <button class="nav-btn" data-page="stats">📊 İstatistik</button>
+  
+  <!-- Hamburger Buton -->
+  <button class="hamburger-btn" id="hamburger-btn" aria-label="Menü">
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
+  
+  <!-- Menü öğeleri (sarmalıyoruz) -->
+  <div class="nav-menu" id="nav-menu">
+    <button class="nav-btn active" data-page="home">🏠 Ana Sayfa</button>
+    <button class="nav-btn" data-page="control">🎮 Kontrol</button>
+    <button class="nav-btn" data-page="terminal">📟 Terminal</button>
+    <button class="nav-btn" data-page="spam">💬 Spam</button>
+    <button class="nav-btn" data-page="inventory">🎒 Envanter</button>
+    <button class="nav-btn" data-page="stats">📊 İstatistik</button>
+  </div>
+  
   <!-- CANLI SİSTEM DURUMU -->
-  <div class="sys-status">
+  <div class="sys-status" id="sys-status">
     <span id="sys-ram"><span class="sys-dot green"></span> RAM <b id="ram-val">--</b>MB</span>
     <span id="sys-bots">🤖 Bot <b id="bots-val">0</b>/15</span>
     <span id="sys-ping">📶 <b id="ping-val">--</b>ms</span>
@@ -349,6 +455,36 @@
 </div>
 
 <script>
+// ═══════════════════ HAMBURGER MENÜ ═══════════════════
+const hamburgerBtn = document.getElementById('hamburger-btn');
+const navMenu = document.getElementById('nav-menu');
+const sysStatus = document.getElementById('sys-status');
+
+hamburgerBtn.addEventListener('click', () => {
+  hamburgerBtn.classList.toggle('open');
+  navMenu.classList.toggle('open');
+  sysStatus.classList.toggle('mobile-show');
+});
+
+// Menü öğesine tıklayınca menüyü kapat (mobilde)
+navMenu.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (window.innerWidth <= 900) {
+      hamburgerBtn.classList.remove('open');
+      navMenu.classList.remove('open');
+      sysStatus.classList.remove('mobile-show');
+    }
+  });
+});
+
+// Pencere boyutu değişince menüyü sıfırla
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 900) {
+    hamburgerBtn.classList.remove('open');
+    navMenu.classList.remove('open');
+    sysStatus.classList.remove('mobile-show');
+  }
+});
   const socket = io({ transports: ['websocket', 'polling'] });
   let selectedBot = null;
 
