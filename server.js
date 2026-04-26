@@ -379,7 +379,7 @@ io.on('connection', (socket) => {
 });
 
 // ─── SUNUCU BAŞLATMA ───
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`[GOD MODE] Sunucu çalışıyor: http://localhost:${PORT}`);
 });
