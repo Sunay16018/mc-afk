@@ -3,489 +3,245 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>God Mode | Minecraft Bot Yönetim Paneli</title>
+<title>God Mode v4.0 | MC Bot Panel</title>
 <script src="/socket.io/socket.io.js"></script>
 <style>
-  /* ─── TEMEL & SIFIRLAMA ─── */
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body {
-    height: 100%;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #0d1117;
-    color: #c9d1d9;
-    overflow: hidden;
+  /* ═══════════════════ TEMEL SIFIRLAMA ═══════════════════ */
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #a371f7;
+    --shadow: 0 0 15px rgba(88,166,255,0.1);
+    --transition: all 0.2s ease;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column;
   }
 
-  /* ─── UST NAVBAR ─── */
+  /* ═══════════════════ NAVBAR ═══════════════════ */
   #navbar {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: auto;
-  min-height: 52px;
-  background-color: #161b22;
-  border-bottom: 1px solid #30363d;
-  display: flex;
-  align-items: center;
-  padding: 6px 12px;
-  gap: 4px;
-  z-index: 1000;
-  flex-wrap: wrap;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+    flex-wrap: wrap; min-height: 52px; z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   }
   #navbar .logo {
-    font-size: 16px;
-    font-weight: 800;
-    color: #58a6ff;
-    margin-right: 16px;
-    letter-spacing: 1px;
+    font-weight: 800; color: var(--accent); font-size: 18px;
+    margin-right: 12px; letter-spacing: 1px; text-shadow: 0 0 10px rgba(88,166,255,0.4);
     white-space: nowrap;
   }
   .nav-btn {
-    background: transparent;
-    border: 1px solid transparent;
-    color: #8b949e;
-    padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
+    background: transparent; border: 1px solid transparent; color: #8b949e;
+    padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
+    transition: var(--transition); white-space: nowrap;
   }
-  .nav-btn:hover { color: #c9d1d9; background-color: #21262d; }
-  .nav-btn.active { color: #58a6ff; border-color: #58a6ff; background-color: rgba(88, 166, 255, 0.1); }
+  .nav-btn:hover { background: #21262d; color: var(--text); }
+  .nav-btn.active {
+    border-color: var(--accent); color: var(--accent);
+    background: rgba(88,166,255,0.1); box-shadow: var(--shadow);
+  }
 
-  /* ─── SAYFA KAPSAYICI ─── */
+  /* Sistem durumu */
+  .sys-status {
+    display: flex; align-items: center; gap: 16px; margin-left: auto;
+    font-size: 11px; color: #8b949e; white-space: nowrap;
+    background: #0d1117; padding: 6px 14px; border-radius: 20px;
+    border: 1px solid var(--border);
+  }
+  .sys-status span { display: flex; align-items: center; gap: 5px; }
+  .sys-dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .sys-dot.green { background: var(--green); color: var(--green); }
+  .sys-dot.yellow { background: var(--yellow); color: var(--yellow); }
+  .sys-dot.red { background: var(--red); color: var(--red); }
+
+  /* ═══════════════════ SAYFALAR ═══════════════════ */
   #pages {
-  margin-top: 90px;
-  height: calc(100vh - 90px);
-  width: 100vw;
+    flex: 1; overflow-y: auto; padding: 16px;
+    scroll-behavior: smooth;
   }
-  .page {
-    display: none;
-    width: 100%;
-    height: 100%;
-    overflow-y: auto;
-    padding: 20px;
-  }
-  .page.active { display: block; }
+  .page { display: none; max-width: 1300px; margin: 0 auto; }
+  .page.active { display: block; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-  /* ─── ORTAK KOMPONENTLER ─── */
-  h2.section-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: #f0f6fc;
-    margin-bottom: 16px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #30363d;
-  }
+  /* ═══════════════════ ORTAK BİLEŞENLER ═══════════════════ */
   .panel {
-    background-color: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 10px;
-    padding: 18px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; margin-bottom: 18px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
   }
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 12px;
+  h2.section-title {
+    font-size: 20px; font-weight: 700; color: #f0f6fc;
+    border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
   }
+  .form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
   label {
-    font-size: 11px;
-    color: #8b949e;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 10px; color: #8b949e; text-transform: uppercase;
+    letter-spacing: 0.8px; font-weight: 600;
   }
   input, select {
-    background-color: #0d1117;
-    border: 1px solid #30363d;
-    color: #c9d1d9;
-    padding: 10px 12px;
-    border-radius: 8px;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s;
-    width: 100%;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 11px 14px; border-radius: 8px; font-size: 14px; outline: none;
+    transition: var(--transition);
   }
-  input:focus, select:focus { border-color: #58a6ff; }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(88,166,255,0.2); }
   button {
-    cursor: pointer;
-    border: none;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 13px;
-    transition: opacity 0.2s, transform 0.1s;
-    padding: 10px 16px;
+    cursor: pointer; border: none; border-radius: 8px; font-weight: 700;
+    font-size: 13px; padding: 10px 18px; transition: var(--transition);
+    display: inline-flex; align-items: center; gap: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
   }
-  button:hover { opacity: 0.85; }
   button:active { transform: scale(0.97); }
-  .btn-primary { background-color: #58a6ff; color: #0d1117; width: 100%; }
-  .btn-danger { background-color: #da3633; color: #fff; }
-  .btn-success { background-color: #238636; color: #fff; }
-  .btn-secondary { background-color: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+  .btn-primary { background: var(--accent); color: #0d1117; width: 100%; justify-content: center; }
+  .btn-danger { background: var(--red); color: white; }
+  .btn-success { background: var(--green); color: white; }
+  .btn-secondary { background: #21262d; border: 1px solid var(--border); color: var(--text); }
   .btn-control {
-    background-color: #21262d;
-    border: 1px solid #30363d;
-    color: #c9d1d9;
-    padding: 18px;
-    font-size: 18px;
-    font-weight: 800;
-    min-width: 60px;
-    text-align: center;
-    user-select: none;
-    border-radius: 8px;
+    background: #21262d; border: 1px solid var(--border); color: var(--text);
+    padding: 18px; font-size: 20px; font-weight: 800; min-width: 65px;
+    text-align: center; border-radius: 10px; user-select: none;
+    transition: var(--transition);
   }
-  .btn-control:active, .btn-control.active {
-    background-color: #58a6ff;
-    color: #0d1117;
-    border-color: #58a6ff;
+  .btn-control:hover { background: #30363d; }
+  .btn-control:active, .btn-control.active { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+  .no-bot-msg {
+    text-align: center; color: #8b949e; border: 1px dashed var(--border);
+    border-radius: 12px; padding: 32px; margin-top: 30px; font-size: 15px;
   }
 
-  /* ─── ANA SAYFA ─── */
-  .home-layout {
-    display: grid;
-    grid-template-columns: 360px 1fr;
-    gap: 20px;
-    max-width: 1100px;
-    margin: 0 auto;
-  }
-  @media (max-width: 900px) { .home-layout { grid-template-columns: 1fr; } }
-
-  /* ─── BOT LİSTESİ ─── */
-  #botList { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  /* ═══════════════════ BOT LİSTESİ ═══════════════════ */
+  #botList { list-style: none; display: flex; flex-direction: column; gap: 6px; }
   .bot-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background-color: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    padding: 10px 14px;
-    cursor: pointer;
-    transition: border-color 0.2s;
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 16px; cursor: pointer; transition: var(--transition);
   }
-  .bot-item:hover { border-color: #58a6ff; }
-  .bot-item.active { border-color: #58a6ff; background-color: rgba(88,166,255,0.08); }
-  .bot-name { font-size: 14px; font-weight: 700; color: #f0f6fc; }
-  .bot-meta { font-size: 11px; color: #8b949e; margin-top: 2px; }
+  .bot-item:hover { border-color: var(--accent); }
+  .bot-item.active { border-color: var(--accent); background: rgba(88,166,255,0.05); }
+  .bot-name { font-weight: 700; color: #f0f6fc; }
   .disconnect-btn {
-    width: 12px; height: 12px; padding: 6px;
-    background-color: #da3633; color: #fff;
-    border: none; border-radius: 4px; cursor: pointer;
+    background: var(--red); color: white; border: none; border-radius: 5px;
+    width: 22px; height: 22px; font-size: 12px; line-height: 1;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 900; box-sizing: content-box; flex-shrink: 0; margin-left: 10px;
+    cursor: pointer; transition: var(--transition);
   }
-  .disconnect-btn:hover { background-color: #f85149; }
+  .disconnect-btn:hover { background: #ff6b6b; }
 
-  /* ─── KONTROL SAYFASI ─── */
-  .control-layout {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    max-width: 900px;
-    margin: 0 auto;
-  }
-  @media (max-width: 700px) { .control-layout { grid-template-columns: 1fr; } }
-  .controls-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 80px);
-    grid-template-rows: repeat(3, 60px);
-    gap: 8px;
-    justify-content: center;
-    margin-top: 20px;
-  }
-  .controls-grid .btn-control:nth-child(1) { grid-column: 2; grid-row: 1; }
-  .controls-grid .btn-control:nth-child(2) { grid-column: 1; grid-row: 2; }
-  .controls-grid .btn-control:nth-child(3) { grid-column: 2; grid-row: 2; }
-  .controls-grid .btn-control:nth-child(4) { grid-column: 3; grid-row: 2; }
-  .controls-grid .btn-control:nth-child(5) { grid-column: 2; grid-row: 3; }
-  .goto-form { display: flex; gap: 8px; margin-top: 12px; align-items: flex-end; }
-  .goto-form input { width: 90px; text-align: center; }
-
-  /* ─── ANTİ-AFK TOGGLE ─── */
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 0;
-    border-bottom: 1px solid #21262d;
-  }
-  .toggle-row:last-child { border-bottom: none; }
-  .toggle-label { font-size: 13px; color: #c9d1d9; font-weight: 600; }
-  .toggle-desc { font-size: 11px; color: #6e7681; margin-top: 2px; }
-  .toggle-switch {
-    position: relative;
-    width: 44px;
-    height: 24px;
-    flex-shrink: 0;
-  }
-  .toggle-switch input { opacity: 0; width: 0; height: 0; }
-  .toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    inset: 0;
-    background-color: #30363d;
-    border-radius: 24px;
-    transition: 0.3s;
-  }
-  .toggle-slider:before {
-    content: '';
-    position: absolute;
-    height: 18px; width: 18px;
-    left: 3px; bottom: 3px;
-    background-color: #c9d1d9;
-    border-radius: 50%;
-    transition: 0.3s;
-  }
-  input:checked + .toggle-slider { background-color: #238636; }
-  input:checked + .toggle-slider:before { transform: translateX(20px); }
-
-  /* ─── TERMINAL SAYFASI ─── */
-  .terminal-layout {
-    max-width: 1100px;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  #terminal {
-    height: 460px;
-    max-height: 60vh;
-    background-color: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 10px;
-    padding: 14px;
-    overflow-y: scroll;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-  .log-line { margin-bottom: 2px; word-break: break-word; }
-  .log-zaman { color: #6e7681; margin-right: 8px; font-size: 11px; }
-  .log-kullanici { font-weight: bold; margin-right: 8px; color: #58a6ff; }
-  .log-bilgi { color: #58a6ff; }
-  .log-sohbet { color: #3fb950; }
-  .log-hata { color: #f85149; }
-  .log-uyari { color: #d29922; }
-  .log-basari { color: #3fb950; }
-  .log-sistem { color: #8b949e; }
-  .log-komut { color: #d2a8ff; }
-  .terminal-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 12px;
-    background-color: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    font-size: 11px;
-    color: #6e7681;
-  }
-  .terminal-toolbar button {
-    background: #21262d;
-    border: 1px solid #30363d;
-    color: #8b949e;
-    padding: 4px 10px;
-    font-size: 11px;
-    border-radius: 6px;
-    font-weight: 600;
-  }
-  .chat-input-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  #chatInput {
-    flex: 1;
-    background-color: #0d1117;
-    border: 1px solid #30363d;
-    color: #c9d1d9;
-    padding: 11px 14px;
-    border-radius: 8px;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  #chatInput:focus { border-color: #58a6ff; }
-  #btn-send {
-    background-color: #58a6ff;
-    color: #0d1117;
-    padding: 11px 22px;
-    font-size: 13px;
-    font-weight: 700;
-    border-radius: 8px;
-    white-space: nowrap;
-    width: auto;
-  }
-
-  /* ─── SPAM SAYFASI ─── */
-  .spam-layout {
-    display: grid;
-    grid-template-columns: 1fr 340px;
-    gap: 20px;
-    max-width: 1000px;
-    margin: 0 auto;
-  }
-  @media (max-width: 800px) { .spam-layout { grid-template-columns: 1fr; } }
-  .spam-mesaj-liste {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 10px;
-    max-height: 320px;
-    overflow-y: auto;
-  }
-  .spam-mesaj-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background-color: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    padding: 8px 12px;
-  }
-  .spam-mesaj-item span {
-    flex: 1;
-    font-size: 13px;
-    color: #c9d1d9;
-    font-family: 'Courier New', monospace;
-    word-break: break-all;
-  }
-  .spam-mesaj-item button {
-    background: #21262d;
-    border: 1px solid #30363d;
-    color: #f85149;
-    padding: 4px 10px;
-    font-size: 11px;
-    border-radius: 6px;
-    font-weight: 700;
-    flex-shrink: 0;
-    width: auto;
-  }
-  .spam-add-row {
-    display: flex;
-    gap: 8px;
-    margin-top: 10px;
-  }
-  .spam-add-row input { flex: 1; }
-  .spam-add-row button { white-space: nowrap; width: auto; }
-  .spam-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    font-weight: 700;
-    padding: 6px 12px;
-    border-radius: 6px;
-    margin-bottom: 10px;
-  }
-  .spam-status.aktif { background: rgba(35,134,54,0.15); color: #3fb950; border: 1px solid #238636; }
-  .spam-status.pasif { background: rgba(48,54,61,0.5); color: #6e7681; border: 1px solid #30363d; }
-  .spam-status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-  .spam-btn-row { display: flex; gap: 8px; margin-top: 12px; }
-  .spam-btn-row button { flex: 1; }
-
-  /* ─── ENVANTER SAYFASI ─── */
-  .inventory-layout { max-width: 700px; margin: 0 auto; }
-  #inventory-grid {
-    display: grid;
-    grid-template-columns: repeat(9, 1fr);
-    gap: 6px;
-    margin-top: 16px;
+  /* ═══════════════════ ENVANTER GRID ═══════════════════ */
+  .inv-grid {
+    display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px;
+    padding: 8px;
   }
   .inv-slot {
-    aspect-ratio: 1;
-    background-color: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px; cursor: pointer; position: relative;
-    transition: border-color 0.2s, background-color 0.2s;
-    color: #c9d1d9; font-weight: 700;
-    overflow: hidden; padding: 4px;
-    text-align: center; word-break: break-all;
+    aspect-ratio: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; position: relative; cursor: pointer;
+    transition: var(--transition);
   }
-  .inv-slot:hover { border-color: #58a6ff; background-color: rgba(88,166,255,0.1); }
-  .inv-slot .slot-count { position: absolute; bottom: 2px; right: 3px; font-size: 10px; color: #fff; text-shadow: 0 1px 3px #000; font-weight: 900; }
-  .inv-slot .slot-num { position: absolute; top: 2px; left: 3px; font-size: 9px; color: #484f58; }
-  .inv-slot.bos { opacity: 0.35; }
+  .inv-slot:hover { border-color: var(--accent); background: rgba(88,166,255,0.1); }
+  .inv-slot .cnt { position: absolute; bottom: 2px; right: 3px; font-size: 10px; color: white; text-shadow: 0 0 4px black; }
+  .inv-slot .idx { position: absolute; top: 2px; left: 3px; font-size: 8px; color: #484f58; }
 
-  /* ─── İSTATİSTİKLER SAYFASI ─── */
-  .stats-layout { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
-  .stat-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; }
-  .stat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-  .stat-header .label { font-size: 13px; font-weight: 700; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
-  .stat-header .value { font-size: 22px; font-weight: 900; font-family: 'Courier New', monospace; }
-  .progress-bg { width: 100%; height: 14px; background-color: #0d1117; border-radius: 8px; overflow: hidden; border: 1px solid #30363d; }
-  .progress-fill { height: 100%; border-radius: 8px; transition: width 0.5s ease; }
-  .fill-health { background-color: #3fb950; }
-  .fill-hunger { background-color: #d29922; }
-  .coords-display { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 10px; }
-  .coord-box { background-color: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px; text-align: center; }
-  .coord-box .axis { font-size: 11px; color: #8b949e; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
-  .coord-box .num { font-size: 20px; font-weight: 900; color: #58a6ff; font-family: 'Courier New', monospace; }
-  .no-bot-msg {
-    text-align: center; color: #8b949e; font-size: 15px;
-    margin-top: 40px; padding: 24px;
-    border: 1px dashed #30363d; border-radius: 10px;
+  /* ═══════════════════ İSTATİSTİKLER ═══════════════════ */
+  .stat-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px; margin-bottom: 14px;
+  }
+  .progress-bg {
+    width: 100%; height: 14px; background: var(--bg); border-radius: 8px;
+    overflow: hidden; border: 1px solid var(--border); margin: 8px 0;
+  }
+  .progress-fill { height: 100%; border-radius: 8px; transition: width 0.4s ease; }
+  .fill-hp { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .fill-food { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  .coords {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    margin-top: 12px;
+  }
+  .coord-box {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; text-align: center;
+  }
+  .coord-box .axis { font-size: 11px; color: #8b949e; text-transform: uppercase; font-weight: 700; }
+  .coord-box .val { font-size: 24px; font-weight: 900; color: var(--accent); font-family: 'Cascadia Code', monospace; }
+
+  /* ═══════════════════ TERMINAL ═══════════════════ */
+  #terminal {
+    height: 420px; overflow-y: auto; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px;
+    line-height: 1.6;
+  }
+  .log-line { margin-bottom: 3px; display: flex; gap: 8px; align-items: baseline; }
+  .log-time { color: #6e7681; font-size: 10px; white-space: nowrap; }
+  .log-user { font-weight: bold; color: var(--accent); white-space: nowrap; }
+  .log-info { color: var(--accent); } .log-chat { color: var(--green); }
+  .log-error { color: var(--red); } .log-warning { color: var(--yellow); }
+  .log-success { color: var(--green); } .log-command { color: var(--purple); }
+
+  /* ═══════════════════ SPAM SAYFASI ═══════════════════ */
+  .spam-list-item {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; margin-bottom: 4px;
   }
 
-  /* ─── AKTİF BOT BARI ─── */
-  .active-bot-bar {
-    background-color: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    padding: 10px 16px;
-    margin-bottom: 16px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 13px;
+  /* Responsive */
+  @media (max-width: 900px) {
+    #navbar { flex-direction: column; align-items: flex-start; }
+    .sys-status { margin-left: 0; margin-top: 6px; }
+    .coords { grid-template-columns: 1fr; }
+    .inv-grid { grid-template-columns: repeat(9, 1fr); }
   }
-  .active-bot-bar .label { color: #8b949e; }
-  .active-bot-bar .name { color: #58a6ff; font-weight: 700; }
-
-  /* ─── KAYDIRMA ÇUBUĞU ─── */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #0d1117; }
-  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: #484f58; }
 </style>
 </head>
 <body>
 
-<!-- ─── ÜST MENÜ ─── -->
 <nav id="navbar">
-  <div class="logo">⚡ GOD MODE</div>
-  <button class="nav-btn active" data-page="home">Ana Sayfa</button>
-  <button class="nav-btn" data-page="control">Kontrol</button>
-  <button class="nav-btn" data-page="terminal">Terminal</button>
-  <button class="nav-btn" data-page="spam">Spam</button>
-  <button class="nav-btn" data-page="inventory">Envanter</button>
-  <button class="nav-btn" data-page="stats">İstatistikler</button>
+  <div class="logo">⚡ GOD MODE v4</div>
+  <button class="nav-btn active" data-page="home">🏠 Ana Sayfa</button>
+  <button class="nav-btn" data-page="control">🎮 Kontrol</button>
+  <button class="nav-btn" data-page="terminal">📟 Terminal</button>
+  <button class="nav-btn" data-page="spam">💬 Spam</button>
+  <button class="nav-btn" data-page="inventory">🎒 Envanter</button>
+  <button class="nav-btn" data-page="stats">📊 İstatistik</button>
+  <!-- CANLI SİSTEM DURUMU -->
+  <div class="sys-status">
+    <span id="sys-ram"><span class="sys-dot green"></span> RAM <b id="ram-val">--</b>MB</span>
+    <span id="sys-bots">🤖 Bot <b id="bots-val">0</b>/15</span>
+    <span id="sys-ping">📶 <b id="ping-val">--</b>ms</span>
+  </div>
 </nav>
 
-<!-- ─── SAYFALAR ─── -->
 <div id="pages">
-
-  <!-- ═══════════ ANA SAYFA ═══════════ -->
+  <!-- ═══════════ HOME ═══════════ -->
   <section id="page-home" class="page active">
-    <h2 class="section-title">Ana Sayfa — Bağlantı Yönetimi</h2>
-    <div class="home-layout">
+    <h2 class="section-title">Ana Sayfa – Bağlantı Yönetimi</h2>
+    <div style="display:grid; grid-template-columns: 320px 1fr; gap:20px;">
       <div class="panel">
-        <h3 style="font-size:14px;color:#f0f6fc;margin-bottom:14px;border-bottom:1px solid #30363d;padding-bottom:8px;">Yeni Bot Bağlantısı</h3>
-        <div class="form-group"><label>Sunucu IP</label><input type="text" id="conn-host" placeholder="127.0.0.1" value="127.0.0.1"></div>
-        <div class="form-group"><label>Port</label><input type="number" id="conn-port" placeholder="25565" value="25565"></div>
-        <div class="form-group"><label>Kullanıcı Adı</label><input type="text" id="conn-username" placeholder="GodBot" value="GodBot"></div>
-        <div class="form-group"><label>Minecraft Sürümü</label><input type="text" id="conn-surum" placeholder="1.20.1" value="1.20.1"></div>
-        <button class="btn-primary" id="btn-connect">Botu Bağla</button>
+        <h3 style="font-size:16px; margin-bottom:12px; color:var(--accent);">Yeni Bot Bağlantısı</h3>
+        <div class="form-group"><label>Sunucu IP</label><input id="conn-host" value="127.0.0.1" placeholder="mc.example.com"></div>
+        <div class="form-group"><label>Port</label><input id="conn-port" value="25565" placeholder="25565"></div>
+        <div class="form-group"><label>Kullanıcı Adı</label><input id="conn-user" value="GodBot" placeholder="BotAdı"></div>
+        <div class="form-group"><label>Sürüm</label><input id="conn-ver" value="1.20.1" placeholder="1.20.1"></div>
+        <button class="btn-primary" id="btn-connect">🚀 Bağlan</button>
       </div>
       <div class="panel">
-        <h3 style="font-size:14px;color:#f0f6fc;margin-bottom:14px;border-bottom:1px solid #30363d;padding-bottom:8px;">Aktif Botlar</h3>
+        <h3 style="font-size:16px; margin-bottom:12px; color:var(--accent);">Aktif Botlar</h3>
         <ul id="botList"></ul>
       </div>
     </div>
@@ -493,122 +249,68 @@
 
   <!-- ═══════════ KONTROL ═══════════ -->
   <section id="page-control" class="page">
-    <h2 class="section-title">Kontrol Paneli — Hareket & Navigasyon</h2>
-    <div id="control-active-bar" class="active-bot-bar" style="display:none;">
-      <span><span class="label">Seçili Bot: </span><span class="name" id="ctrl-bot-name">-</span></span>
-      <span style="color:#6e7681;font-size:11px;">Klavye: W A S D | Boşluk: Zıpla</span>
-    </div>
-    <div id="control-no-bot" class="no-bot-msg">Lütfen önce Ana Sayfa'dan bir bot seçin.</div>
-    <div class="control-layout" id="control-content" style="display:none;">
-      <!-- Yön Tuşları -->
+    <h2 class="section-title">Kontrol Paneli – Hareket & Navigasyon</h2>
+    <div id="ctrl-no-bot" class="no-bot-msg">Önce Ana Sayfa'dan bir bot seçin.</div>
+    <div id="ctrl-content" style="display:none;">
       <div class="panel" style="text-align:center;">
-        <h3 style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;">Yön Tuşları</h3>
-        <div class="controls-grid">
-          <button class="btn-control" data-dir="forward">W</button>
+        <div style="display:grid; grid-template-columns: repeat(3, 70px); gap:8px; justify-content:center; margin:15px 0;">
+          <button class="btn-control" data-dir="forward" style="grid-column:2;">W</button>
           <button class="btn-control" data-dir="left">A</button>
           <button class="btn-control" data-dir="back">S</button>
           <button class="btn-control" data-dir="right">D</button>
-          <button class="btn-control" data-dir="jump">↑</button>
+          <button class="btn-control" data-dir="jump" style="grid-column:2;">↑</button>
         </div>
+        <small style="color:#8b949e;">Klavye: WASD / Boşluk</small>
       </div>
-      <!-- Koordinat + Anti-AFK -->
-      <div style="display:flex;flex-direction:column;gap:16px;">
-        <div class="panel">
-          <h3 style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Koordinata Git</h3>
-          <div class="goto-form">
-            <input type="number" id="goto-x" placeholder="X">
-            <input type="number" id="goto-y" placeholder="Y">
-            <input type="number" id="goto-z" placeholder="Z">
-          </div>
-          <button class="btn-primary" id="btn-goto" style="margin-top:10px;">Git</button>
+      <div class="panel">
+        <h3 style="color:var(--yellow);">🛡️ Anti-AFK Koruma</h3>
+        <label style="display:flex; align-items:center; gap:12px; cursor:pointer; padding:8px 0;">
+          <input type="checkbox" id="antiafk-toggle" checked style="width:20px; height:20px;">
+          <span>Rastgele kamera & hareket (25-60sn)</span>
+        </label>
+      </div>
+      <div class="panel">
+        <h3>📍 Koordinata Git</h3>
+        <div style="display:flex; gap:8px;">
+          <input id="goto-x" placeholder="X" type="number" style="width:33%">
+          <input id="goto-y" placeholder="Y" type="number" style="width:33%">
+          <input id="goto-z" placeholder="Z" type="number" style="width:34%">
         </div>
-        <!-- Anti-AFK Paneli -->
-        <div class="panel">
-          <h3 style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Bot Koruma</h3>
-          <div class="toggle-row">
-            <div>
-              <div class="toggle-label">Anti-AFK</div>
-              <div class="toggle-desc">Rastgele kamera + adım (25-50sn arayla, hile algılanmaz)</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="antiafk-toggle" checked>
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
+        <button class="btn-primary" id="btn-goto" style="margin-top:8px;">🎯 Hedefe Git</button>
       </div>
     </div>
   </section>
 
   <!-- ═══════════ TERMINAL ═══════════ -->
   <section id="page-terminal" class="page">
-    <h2 class="section-title">Terminal — Canlı Loglar</h2>
-    <div class="terminal-layout">
-      <!-- Toolbar -->
-      <div class="terminal-toolbar">
-        <span id="terminal-msg-count">0 mesaj</span>
-        <div style="display:flex;gap:8px;">
-          <button id="btn-terminal-scroll-lock" title="Otomatik kaydırmayı aç/kapat">⟳ Oto-Scroll: Açık</button>
-          <button id="btn-terminal-clear" title="Terminali temizle">✕ Temizle</button>
-        </div>
-      </div>
-      <!-- Terminal Log Alanı -->
-      <div id="terminal"></div>
-      <!-- Input Alanı -->
-      <div class="chat-input-row">
-        <input type="text" id="chatInput" placeholder="Komut veya mesaj yaz... (örn: /help, Merhaba!)" autocomplete="off">
-        <button id="btn-send">Gönder ↵</button>
-      </div>
+    <h2 class="section-title">Terminal – Canlı Log</h2>
+    <div id="terminal"></div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <input id="chatInput" placeholder="Mesaj yazın veya komut girin..." style="flex:1;">
+      <button id="btn-send" class="btn-primary" style="width:auto;">Gönder ↵</button>
     </div>
   </section>
 
   <!-- ═══════════ SPAM ═══════════ -->
   <section id="page-spam" class="page">
-    <h2 class="section-title">Spam Yöneticisi — Otomatik Mesaj Gönderici</h2>
-    <div id="spam-no-bot" class="no-bot-msg">Lütfen önce Ana Sayfa'dan bir bot seçin.</div>
+    <h2 class="section-title">Spam Yöneticisi</h2>
+    <div id="spam-no-bot" class="no-bot-msg">Önce bir bot seçin.</div>
     <div id="spam-content" style="display:none;">
-      <div id="spam-active-bar" class="active-bot-bar">
-        <span><span class="label">Seçili Bot: </span><span class="name" id="spam-bot-name">-</span></span>
-        <div class="spam-status pasif" id="spam-status-badge">
-          <span class="dot"></span><span id="spam-status-text">Durduruldu</span>
+      <div class="panel">
+        <div style="display:flex; gap:8px; margin-bottom:12px;">
+          <input id="spam-msg-input" placeholder="Spam mesajı..." style="flex:1;">
+          <button id="spam-add-btn" class="btn-secondary">+ Ekle</button>
         </div>
+        <ul id="spam-list" style="list-style:none; max-height:200px; overflow-y:auto;"></ul>
       </div>
-      <div class="spam-layout">
-        <!-- Sol: Mesaj Listesi -->
-        <div class="panel">
-          <h3 style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Spam Mesajları</h3>
-          <p style="font-size:11px;color:#6e7681;margin-bottom:10px;">Mesajlar sırayla gönderilir. İstediğin kadar ekleyebilirsin.</p>
-          <div class="spam-mesaj-liste" id="spam-liste"></div>
-          <div class="spam-add-row">
-            <input type="text" id="spam-yeni-mesaj" placeholder="Yeni mesaj gir...">
-            <button class="btn-secondary" id="btn-spam-ekle" style="width:auto;padding:10px 16px;">+ Ekle</button>
-          </div>
+      <div class="panel">
+        <div class="form-group">
+          <label>Aralık (ms)</label>
+          <input id="spam-interval" type="number" value="3000" min="500" step="100">
         </div>
-        <!-- Sağ: Ayarlar -->
-        <div style="display:flex;flex-direction:column;gap:16px;">
-          <div class="panel">
-            <h3 style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Zamanlama</h3>
-            <div class="form-group">
-              <label>Mesajlar Arası Süre (ms)</label>
-              <input type="number" id="spam-aralik" value="3000" min="500" step="100" placeholder="3000">
-              <span style="font-size:11px;color:#6e7681;">Minimum 500ms — 3000ms = 3 saniye</span>
-            </div>
-            <div class="form-group" style="margin-top:4px;">
-              <label>Hesaplanan Hız</label>
-              <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:10px 12px;font-size:13px;color:#58a6ff;font-family:monospace;" id="spam-hiz-goster">—</div>
-            </div>
-          </div>
-          <div class="panel">
-            <h3 style="font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Kontrol</h3>
-            <div class="spam-btn-row">
-              <button class="btn-success" id="btn-spam-baslat">▶ Başlat</button>
-              <button class="btn-danger" id="btn-spam-durdur">■ Durdur</button>
-            </div>
-            <div style="margin-top:10px;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:8px;font-size:11px;color:#6e7681;line-height:1.6;">
-              ⚠ Çok düşük değerler sunucular tarafından spam olarak algılanabilir.<br>
-              Önerilen değer: 3000ms ve üzeri.
-            </div>
-          </div>
+        <div style="display:flex; gap:10px;">
+          <button id="spam-start" class="btn-success" style="flex:1;">▶ Başlat</button>
+          <button id="spam-stop" class="btn-danger" style="flex:1;">■ Durdur</button>
         </div>
       </div>
     </div>
@@ -616,437 +318,221 @@
 
   <!-- ═══════════ ENVANTER ═══════════ -->
   <section id="page-inventory" class="page">
-    <h2 class="section-title">Canlı Envanter — Eşya Yönetimi</h2>
-    <div id="inv-active-bar" class="active-bot-bar" style="display:none;">
-      <span><span class="label">Seçili Bot: </span><span class="name" id="inv-bot-name">-</span></span>
-      <span style="font-size:11px;color:#6e7681;">Slota tıklayarak eşyayı yere at.</span>
-    </div>
-    <div id="inv-no-bot" class="no-bot-msg">Lütfen önce Ana Sayfa'dan bir bot seçin.</div>
-    <div class="inventory-layout" id="inv-content" style="display:none;">
-      <div class="panel"><div id="inventory-grid"></div></div>
+    <h2 class="section-title">Canlı Envanter</h2>
+    <div id="inv-no-bot" class="no-bot-msg">Bot seçilmedi.</div>
+    <div id="inv-content" style="display:none;">
+      <div class="panel"><div class="inv-grid" id="inv-grid"></div></div>
+      <small style="color:#8b949e;">Slotlara tıklayarak eşya atabilirsiniz.</small>
     </div>
   </section>
 
-  <!-- ═══════════ İSTATİSTİKLER ═══════════ -->
+  <!-- ═══════════ İSTATİSTİK ═══════════ -->
   <section id="page-stats" class="page">
-    <h2 class="section-title">Canlı İstatistikler — Bot Durumu</h2>
-    <div id="stats-active-bar" class="active-bot-bar" style="display:none;">
-      <span><span class="label">Seçili Bot: </span><span class="name" id="stats-bot-name">-</span></span>
-    </div>
-    <div id="stats-no-bot" class="no-bot-msg">Lütfen önce Ana Sayfa'dan bir bot seçin.</div>
-    <div class="stats-layout" id="stats-content" style="display:none;">
+    <h2 class="section-title">Canlı İstatistikler</h2>
+    <div id="stats-no-bot" class="no-bot-msg">Bot seçilmedi.</div>
+    <div id="stats-content" style="display:none;">
       <div class="stat-card">
-        <div class="stat-header">
-          <span class="label">Can / Sağlık</span>
-          <span class="value" id="stat-health-text" style="color:#3fb950;">-- / 20</span>
-        </div>
-        <div class="progress-bg"><div class="progress-fill fill-health" id="stat-health-bar" style="width:0%;"></div></div>
+        <span style="font-weight:700;">❤️ Can</span> <b id="hp-val">--/20</b>
+        <div class="progress-bg"><div class="progress-fill fill-hp" id="hp-bar" style="width:0%"></div></div>
       </div>
       <div class="stat-card">
-        <div class="stat-header">
-          <span class="label">Açlık</span>
-          <span class="value" id="stat-hunger-text" style="color:#d29922;">-- / 20</span>
-        </div>
-        <div class="progress-bg"><div class="progress-fill fill-hunger" id="stat-hunger-bar" style="width:0%;"></div></div>
+        <span style="font-weight:700;">🍗 Açlık</span> <b id="food-val">--/20</b>
+        <div class="progress-bg"><div class="progress-fill fill-food" id="food-bar" style="width:0%"></div></div>
       </div>
-      <div class="stat-card">
-        <div class="stat-header">
-          <span class="label">Koordinatlar</span>
-          <span class="value" style="color:#58a6ff;">Canlı Konum</span>
-        </div>
-        <div class="coords-display">
-          <div class="coord-box"><div class="axis">X Ekseni</div><div class="num" id="coord-x">--</div></div>
-          <div class="coord-box"><div class="axis">Y Ekseni</div><div class="num" id="coord-y">--</div></div>
-          <div class="coord-box"><div class="axis">Z Ekseni</div><div class="num" id="coord-z">--</div></div>
-        </div>
+      <div class="coords">
+        <div class="coord-box"><div class="axis">X</div><div class="val" id="coord-x">--</div></div>
+        <div class="coord-box"><div class="axis">Y</div><div class="val" id="coord-y">--</div></div>
+        <div class="coord-box"><div class="axis">Z</div><div class="val" id="coord-z">--</div></div>
       </div>
     </div>
   </section>
-
 </div>
 
 <script>
-// ─── SOCKET.IO ───
-const socket = io({ transports: ['websocket'], upgrade: false });
-let seciliBot = null;
+  const socket = io({ transports: ['websocket', 'polling'] });
+  let selectedBot = null;
 
-// ─── DOM ───
-const elTerminal = document.getElementById('terminal');
-const elBotList = document.getElementById('botList');
-const elChatInput = document.getElementById('chatInput');
-
-// ─── TERMİNAL OTO-SCROLL ───
-let terminalOtoScroll = true;
-let terminalMesajSayisi = 0;
-
-function terminalIsAltta() {
-  return elTerminal.scrollHeight - elTerminal.scrollTop - elTerminal.clientHeight < 60;
-}
-
-elTerminal.addEventListener('scroll', () => {
-  if (terminalIsAltta()) {
-    terminalOtoScroll = true;
-    guncelleBtnOtoScroll();
-  }
-});
-
-function guncelleBtnOtoScroll() {
-  const btn = document.getElementById('btn-terminal-scroll-lock');
-  btn.textContent = `⟳ Oto-Scroll: ${terminalOtoScroll ? 'Açık' : 'Kapalı'}`;
-  btn.style.color = terminalOtoScroll ? '#3fb950' : '#d29922';
-}
-
-document.getElementById('btn-terminal-scroll-lock').onclick = () => {
-  terminalOtoScroll = !terminalOtoScroll;
-  guncelleBtnOtoScroll();
-};
-
-document.getElementById('btn-terminal-clear').onclick = () => {
-  elTerminal.innerHTML = '';
-  terminalMesajSayisi = 0;
-  document.getElementById('terminal-msg-count').textContent = '0 mesaj';
-};
-
-// ─── SAYFA GEÇİŞ ───
-const navButtons = document.querySelectorAll('.nav-btn');
-const pages = document.querySelectorAll('.page');
-
-function showPage(pageName) {
-  navButtons.forEach(b => b.classList.toggle('active', b.dataset.page === pageName));
-  pages.forEach(p => p.classList.toggle('active', p.id === 'page-' + pageName));
-  guncelleSayfaGorunurlugu();
-}
-navButtons.forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.page)));
-
-// ─── LOG EKLE ───
-function logEkle(data) {
-  const line = document.createElement('div');
-  line.className = 'log-line';
-  const zamanSpan = document.createElement('span');
-  zamanSpan.className = 'log-zaman';
-  zamanSpan.textContent = data.zaman || new Date().toLocaleTimeString('tr-TR');
-  const kullaniciSpan = document.createElement('span');
-  kullaniciSpan.className = 'log-kullanici';
-  kullaniciSpan.textContent = data.kullaniciAdi ? `[${data.kullaniciAdi}]` : '';
-  const mesajSpan = document.createElement('span');
-  mesajSpan.className = `log-${data.tur || 'bilgi'}`;
-  mesajSpan.textContent = data.mesaj;
-  line.appendChild(zamanSpan);
-  if (data.kullaniciAdi) line.appendChild(kullaniciSpan);
-  line.appendChild(mesajSpan);
-  elTerminal.appendChild(line);
-
-  // Sadece kullanıcı alttaysa auto-scroll
-  if (terminalOtoScroll) {
-    elTerminal.scrollTop = elTerminal.scrollHeight;
-  } else {
-    // Yeni mesaj uyarısı: başlığı değiştir
-    terminalMesajSayisi++;
-    document.getElementById('terminal-msg-count').textContent = `${terminalMesajSayisi} mesaj${terminalOtoScroll ? '' : ' ↓'}`;
-  }
-  terminalMesajSayisi++;
-  document.getElementById('terminal-msg-count').textContent = `${terminalMesajSayisi} mesaj`;
-}
-
-// ─── BOT LİSTESİ ───
-function botListesiniGuncelle(liste) {
-  elBotList.innerHTML = '';
-  liste.forEach(isim => {
-    const li = document.createElement('li');
-    li.className = 'bot-item' + (seciliBot === isim ? ' active' : '');
-    const solDiv = document.createElement('div');
-    solDiv.style.cssText = 'display:flex;flex-direction:column;';
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'bot-name';
-    nameSpan.textContent = isim;
-    const metaSpan = document.createElement('span');
-    metaSpan.className = 'bot-meta';
-    metaSpan.textContent = seciliBot === isim ? '● Seçili' : '○ Aktif';
-    solDiv.appendChild(nameSpan);
-    solDiv.appendChild(metaSpan);
-    const killBtn = document.createElement('button');
-    killBtn.className = 'disconnect-btn';
-    killBtn.textContent = 'X';
-    killBtn.title = 'Botu Sonlandır';
-    killBtn.onclick = (e) => {
-      e.stopPropagation();
-      socket.emit('bot_kes', isim);
-      if (seciliBot === isim) { seciliBot = null; guncelleSayfaGorunurlugu(); }
-    };
-    li.appendChild(solDiv);
-    li.appendChild(killBtn);
-    li.onclick = () => {
-      seciliBot = isim;
-      botListesiniGuncelle(liste);
-      guncelleSayfaGorunurlugu();
-      logEkle({ kullaniciAdi: 'Sistem', mesaj: `${isim} seçildi.`, tur: 'bilgi' });
-    };
-    elBotList.appendChild(li);
+  // Sayfa geçişleri
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-' + btn.dataset.page).classList.add('active');
+      updateUIBot();
+    });
   });
-  guncelleSayfaGorunurlugu();
-}
 
-// ─── SAYFA GÖRÜNÜRLÜĞÜ ───
-function guncelleSayfaGorunurlugu() {
-  const goster = (content, noBot, bar, nameEl) => {
-    if (seciliBot) {
-      content.style.display = '';
-      noBot.style.display = 'none';
-      if (bar) bar.style.display = '';
-      if (nameEl) nameEl.textContent = seciliBot;
-    } else {
-      content.style.display = 'none';
-      noBot.style.display = '';
-      if (bar) bar.style.display = 'none';
-    }
-  };
-  goster(
-    document.getElementById('control-content'),
-    document.getElementById('control-no-bot'),
-    document.getElementById('control-active-bar'),
-    document.getElementById('ctrl-bot-name')
-  );
-  goster(
-    document.getElementById('inv-content'),
-    document.getElementById('inv-no-bot'),
-    document.getElementById('inv-active-bar'),
-    document.getElementById('inv-bot-name')
-  );
-  goster(
-    document.getElementById('stats-content'),
-    document.getElementById('stats-no-bot'),
-    document.getElementById('stats-active-bar'),
-    document.getElementById('stats-bot-name')
-  );
-  // Spam sayfası
-  if (seciliBot) {
-    document.getElementById('spam-content').style.display = '';
-    document.getElementById('spam-no-bot').style.display = 'none';
-    document.getElementById('spam-bot-name').textContent = seciliBot;
-  } else {
-    document.getElementById('spam-content').style.display = 'none';
-    document.getElementById('spam-no-bot').style.display = '';
-  }
-}
-
-// ─── ENVANTER ───
-function envanterGoster(envanter) {
-  const grid = document.getElementById('inventory-grid');
-  grid.innerHTML = '';
-  if (!envanter) return;
-  for (let i = 0; i < 36; i++) {
-    const slotDiv = document.createElement('div');
-    slotDiv.className = 'inv-slot bos';
-    const numSpan = document.createElement('span');
-    numSpan.className = 'slot-num';
-    numSpan.textContent = i;
-    slotDiv.appendChild(numSpan);
-    const esya = envanter[i];
-    if (esya) {
-      slotDiv.classList.remove('bos');
-      slotDiv.textContent = esya.name.substring(0, 2).toUpperCase();
-      slotDiv.title = `${esya.displayName} (Slot ${esya.slot})`;
-      const countSpan = document.createElement('span');
-      countSpan.className = 'slot-count';
-      countSpan.textContent = esya.count;
-      slotDiv.appendChild(countSpan);
-      slotDiv.onclick = () => {
-        if (seciliBot) socket.emit('esya_at', { kullaniciAdi: seciliBot, slot: esya.slot });
-      };
-    }
-    grid.appendChild(slotDiv);
-  }
-}
-
-// ─── SOCKET OLAYLARI ───
-socket.on('connect', () => logEkle({ kullaniciAdi: 'Sistem', mesaj: 'God Mode sunucusuna bağlanıldı.', tur: 'basari' }));
-socket.on('disconnect', () => logEkle({ kullaniciAdi: 'Sistem', mesaj: 'Sunucu bağlantısı kesildi.', tur: 'hata' }));
-socket.on('log', (data) => logEkle(data));
-socket.on('bot_listesi', (liste) => botListesiniGuncelle(liste));
-socket.on('bot_verileri', (data) => {
-  if (seciliBot && data[seciliBot]) {
-    const b = data[seciliBot];
-    document.getElementById('stat-health-text').textContent = `${b.saglik} / 20`;
-    document.getElementById('stat-health-bar').style.width = `${(b.saglik / 20) * 100}%`;
-    document.getElementById('stat-hunger-text').textContent = `${b.aclik} / 20`;
-    document.getElementById('stat-hunger-bar').style.width = `${(b.aclik / 20) * 100}%`;
-    document.getElementById('coord-x').textContent = b.pozisyon.x;
-    document.getElementById('coord-y').textContent = b.pozisyon.y;
-    document.getElementById('coord-z').textContent = b.pozisyon.z;
-    envanterGoster(b.envanter);
-    // Anti-AFK toggle senkronize et
-    if (typeof b.antiAfk !== 'undefined') {
-      const toggle = document.getElementById('antiafk-toggle');
-      if (toggle.checked !== b.antiAfk) toggle.checked = b.antiAfk;
-    }
-    // Spam durumu
-    const badge = document.getElementById('spam-status-badge');
-    const statusText = document.getElementById('spam-status-text');
-    if (b.spamAktif) {
-      badge.className = 'spam-status aktif';
-      statusText.textContent = 'Çalışıyor';
-    } else {
-      badge.className = 'spam-status pasif';
-      statusText.textContent = 'Durduruldu';
-    }
-  }
-});
-
-// ─── BAĞLANTI FORMU ───
-document.getElementById('btn-connect').onclick = () => {
-  const host = document.getElementById('conn-host').value.trim();
-  const port = document.getElementById('conn-port').value.trim();
-  const kullaniciAdi = document.getElementById('conn-username').value.trim();
-  const surum = document.getElementById('conn-surum').value.trim();
-  if (!host || !port || !kullaniciAdi) {
-    logEkle({ kullaniciAdi: 'Sistem', mesaj: 'Lütfen tüm bağlantı bilgilerini doldurun.', tur: 'hata' });
-    return;
-  }
-  socket.emit('bot_baglan', { host, port, kullaniciAdi, surum });
-};
-
-// ─── TERMİNAL INPUT ───
-function sohbetGonder() {
-  const mesaj = elChatInput.value.trim();
-  if (!mesaj) return;
-  if (!seciliBot) {
-    logEkle({ kullaniciAdi: 'Sistem', mesaj: 'Önce bir bot seçmelisiniz.', tur: 'uyari' });
-    return;
-  }
-  socket.emit('chat_gonder', { kullaniciAdi: seciliBot, mesaj });
-  elChatInput.value = '';
-  elChatInput.focus();
-}
-document.getElementById('btn-send').onclick = sohbetGonder;
-elChatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sohbetGonder(); });
-
-// ─── HAREKET (Fare + Dokunma) ───
-document.querySelectorAll('.btn-control[data-dir]').forEach(btn => {
-  const yon = btn.getAttribute('data-dir');
-  const sendMove = (durum) => {
-    if (!seciliBot) {
-      if (durum) logEkle({ kullaniciAdi: 'Sistem', mesaj: 'Hareket için bot seçin.', tur: 'uyari' });
-      return;
-    }
-    socket.emit('hareket', { kullaniciAdi: seciliBot, yon, durum });
-  };
-  btn.addEventListener('mousedown', () => { btn.classList.add('active'); sendMove(true); });
-  btn.addEventListener('mouseup', () => { btn.classList.remove('active'); sendMove(false); });
-  btn.addEventListener('mouseleave', () => { btn.classList.remove('active'); sendMove(false); });
-  btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.classList.add('active'); sendMove(true); });
-  btn.addEventListener('touchend', (e) => { e.preventDefault(); btn.classList.remove('active'); sendMove(false); });
-});
-
-// ─── KOORDİNATA GİT ───
-document.getElementById('btn-goto').onclick = () => {
-  if (!seciliBot) { logEkle({ kullaniciAdi: 'Sistem', mesaj: 'Önce bot seçin.', tur: 'uyari' }); return; }
-  const x = document.getElementById('goto-x').value;
-  const y = document.getElementById('goto-y').value;
-  const z = document.getElementById('goto-z').value;
-  if (x === '' || y === '' || z === '') { logEkle({ kullaniciAdi: 'Sistem', mesaj: 'Tüm koordinatları girin.', tur: 'uyari' }); return; }
-  socket.emit('git', { kullaniciAdi: seciliBot, x, y, z });
-};
-
-// ─── ANTİ-AFK TOGGLE ───
-document.getElementById('antiafk-toggle').addEventListener('change', (e) => {
-  if (!seciliBot) { e.target.checked = !e.target.checked; return; }
-  socket.emit('antiafk_toggle', { kullaniciAdi: seciliBot, aktif: e.target.checked });
-});
-
-// ─── SPAM SİSTEMİ ───
-let spamMesajlar = [];
-
-function spamListesiGuncelle() {
-  const liste = document.getElementById('spam-liste');
-  liste.innerHTML = '';
-  if (spamMesajlar.length === 0) {
-    liste.innerHTML = '<div style="text-align:center;color:#484f58;font-size:12px;padding:20px;">Henüz mesaj eklenmedi...</div>';
-    return;
-  }
-  spamMesajlar.forEach((msg, i) => {
-    const item = document.createElement('div');
-    item.className = 'spam-mesaj-item';
-    const idx = document.createElement('span');
-    idx.style.cssText = 'flex:none;font-size:10px;color:#484f58;width:20px;';
-    idx.textContent = `${i + 1}.`;
-    const text = document.createElement('span');
-    text.textContent = msg;
-    const delBtn = document.createElement('button');
-    delBtn.textContent = '✕';
-    delBtn.onclick = () => {
-      spamMesajlar.splice(i, 1);
-      spamListesiGuncelle();
-    };
-    item.appendChild(idx);
-    item.appendChild(text);
-    item.appendChild(delBtn);
-    liste.appendChild(item);
+  // Canlı sistem durumu (navbar)
+  socket.on('system_status', (data) => {
+    document.getElementById('ram-val').textContent = data.ram;
+    document.getElementById('bots-val').textContent = data.bots;
+    const dot = document.querySelector('#sys-ram .sys-dot');
+    dot.className = 'sys-dot ' + (data.ram > 400 ? 'red' : data.ram > 200 ? 'yellow' : 'green');
+    // Ping hesaplama (basit)
+    const pingStart = Date.now();
+    socket.emit('get_system_info', null, () => {
+      document.getElementById('ping-val').textContent = Date.now() - pingStart;
+    });
   });
-}
 
-// Hız hesapla
-document.getElementById('spam-aralik').addEventListener('input', () => {
-  const aralik = parseInt(document.getElementById('spam-aralik').value) || 3000;
-  const hiz = (60000 / Math.max(500, aralik)).toFixed(1);
-  document.getElementById('spam-hiz-goster').textContent = `${hiz} mesaj/dakika`;
-});
-// İlk değer
-document.getElementById('spam-hiz-goster').textContent = '20.0 mesaj/dakika';
+  // Bot listesi
+  socket.on('bot_list', (list) => {
+    const ul = document.getElementById('botList');
+    ul.innerHTML = '';
+    list.forEach(name => {
+      const li = document.createElement('li');
+      li.className = 'bot-item' + (selectedBot === name ? ' active' : '');
+      li.innerHTML = `<span class="bot-name">${name}</span>`;
+      const kill = document.createElement('button');
+      kill.className = 'disconnect-btn'; kill.textContent = 'X';
+      kill.onclick = (e) => { e.stopPropagation(); socket.emit('bot_kill', name); };
+      li.appendChild(kill);
+      li.onclick = () => { selectedBot = name; updateUIBot(); socket.emit('bot_list', list); };
+      ul.appendChild(li);
+    });
+  });
 
-document.getElementById('btn-spam-ekle').onclick = () => {
-  const input = document.getElementById('spam-yeni-mesaj');
-  const val = input.value.trim();
-  if (!val) return;
-  spamMesajlar.push(val);
-  input.value = '';
-  spamListesiGuncelle();
-  input.focus();
-};
-document.getElementById('spam-yeni-mesaj').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') document.getElementById('btn-spam-ekle').click();
-});
+  // Log
+  socket.on('log', (data) => {
+    const term = document.getElementById('terminal');
+    const div = document.createElement('div');
+    div.className = 'log-line';
+    div.innerHTML = `<span class="log-time">${data.time}</span><span class="log-user">[${data.user}]</span><span class="log-${data.type}">${data.msg}</span>`;
+    term.appendChild(div);
+    term.scrollTop = term.scrollHeight;
+  });
 
-document.getElementById('btn-spam-baslat').onclick = () => {
-  if (!seciliBot) { logEkle({ kullaniciAdi: 'Sistem', mesaj: 'Önce bot seçin.', tur: 'uyari' }); return; }
-  if (spamMesajlar.length === 0) { logEkle({ kullaniciAdi: 'Sistem', mesaj: 'En az 1 mesaj ekleyin.', tur: 'hata' }); return; }
-  const aralik = Math.max(500, parseInt(document.getElementById('spam-aralik').value) || 3000);
-  socket.emit('spam_baslat', { kullaniciAdi: seciliBot, mesajlar: [...spamMesajlar], aralik });
-};
+  // Bot verileri
+  socket.on('bots_data', (data) => {
+    if (selectedBot && data[selectedBot]) {
+      const b = data[selectedBot];
+      document.getElementById('hp-val').textContent = b.health + '/20';
+      document.getElementById('hp-bar').style.width = (b.health/20*100) + '%';
+      document.getElementById('food-val').textContent = b.food + '/20';
+      document.getElementById('food-bar').style.width = (b.food/20*100) + '%';
+      document.getElementById('coord-x').textContent = b.position.x;
+      document.getElementById('coord-y').textContent = b.position.y;
+      document.getElementById('coord-z').textContent = b.position.z;
+      // Envanter
+      const grid = document.getElementById('inv-grid');
+      grid.innerHTML = '';
+      (b.inventory||[]).forEach((item, i) => {
+        const slot = document.createElement('div');
+        slot.className = 'inv-slot';
+        if (item) {
+          slot.textContent = item.name.substring(0,2);
+          slot.title = item.displayName;
+          const cnt = document.createElement('span'); cnt.className = 'cnt'; cnt.textContent = item.count; slot.appendChild(cnt);
+          slot.onclick = () => socket.emit('drop_item', { username: selectedBot, slot: i });
+        }
+        const idx = document.createElement('span'); idx.className = 'idx'; idx.textContent = i; slot.appendChild(idx);
+        grid.appendChild(slot);
+      });
+      document.getElementById('antiafk-toggle').checked = b.antiAfk;
+    }
+  });
 
-document.getElementById('btn-spam-durdur').onclick = () => {
-  if (!seciliBot) return;
-  socket.emit('spam_durdur', { kullaniciAdi: seciliBot });
-};
+  // Bağlan
+  document.getElementById('btn-connect').onclick = () => {
+    socket.emit('bot_connect', {
+      host: document.getElementById('conn-host').value,
+      port: document.getElementById('conn-port').value,
+      username: document.getElementById('conn-user').value,
+      version: document.getElementById('conn-ver').value
+    });
+  };
 
-// ─── KLAVYE KISAYOLLARI ───
-window.addEventListener('keydown', (e) => {
-  if (document.activeElement === elChatInput) return;
-  if (!seciliBot) return;
-  const keyMap = { 'w': 'forward', 'arrowup': 'forward', 's': 'back', 'arrowdown': 'back', 'a': 'left', 'arrowleft': 'left', 'd': 'right', 'arrowright': 'right', ' ': 'jump' };
-  const yon = keyMap[e.key.toLowerCase()];
-  if (yon) {
-    e.preventDefault();
-    socket.emit('hareket', { kullaniciAdi: seciliBot, yon, durum: true });
-    const btn = document.querySelector(`.btn-control[data-dir="${yon}"]`);
-    if (btn) btn.classList.add('active');
+  // Chat gönder
+  document.getElementById('btn-send').onclick = () => {
+    const msg = document.getElementById('chatInput').value.trim();
+    if (msg && selectedBot) socket.emit('chat_send', { username: selectedBot, message: msg });
+    document.getElementById('chatInput').value = '';
+  };
+
+  // Hareket
+  document.querySelectorAll('.btn-control').forEach(btn => {
+    const dir = btn.dataset.dir;
+    const send = (state) => { if (selectedBot) socket.emit('move', { username: selectedBot, direction: dir, state }); };
+    btn.addEventListener('mousedown', () => send(true));
+    btn.addEventListener('mouseup', () => send(false));
+    btn.addEventListener('mouseleave', () => send(false));
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); send(true); });
+    btn.addEventListener('touchend', (e) => { e.preventDefault(); send(false); });
+  });
+
+  // Git
+  document.getElementById('btn-goto').onclick = () => {
+    if (!selectedBot) return;
+    socket.emit('goto', {
+      username: selectedBot,
+      x: document.getElementById('goto-x').value,
+      y: document.getElementById('goto-y').value,
+      z: document.getElementById('goto-z').value
+    });
+  };
+
+  // AntiAFK toggle
+  document.getElementById('antiafk-toggle').onchange = (e) => {
+    if (selectedBot) socket.emit('antiafk_toggle', { username: selectedBot, active: e.target.checked });
+  };
+
+  // Spam
+  let spamMsgs = [];
+  document.getElementById('spam-add-btn').onclick = () => {
+    const inp = document.getElementById('spam-msg-input');
+    if (inp.value.trim()) spamMsgs.push(inp.value.trim());
+    inp.value = '';
+    renderSpamList();
+  };
+  document.getElementById('spam-start').onclick = () => {
+    if (!selectedBot) return;
+    socket.emit('spam_start', { username: selectedBot, messages: spamMsgs, interval: document.getElementById('spam-interval').value });
+  };
+  document.getElementById('spam-stop').onclick = () => {
+    if (selectedBot) socket.emit('spam_stop', selectedBot);
+  };
+  function renderSpamList() {
+    document.getElementById('spam-list').innerHTML = spamMsgs.map((m,i) => `<li class="spam-list-item">${i+1}. ${m} <button onclick="spamMsgs.splice(${i},1); renderSpamList();" class="disconnect-btn">X</button></li>`).join('');
   }
-});
-window.addEventListener('keyup', (e) => {
-  if (document.activeElement === elChatInput) return;
-  if (!seciliBot) return;
-  const keyMap = { 'w': 'forward', 'arrowup': 'forward', 's': 'back', 'arrowdown': 'back', 'a': 'left', 'arrowleft': 'left', 'd': 'right', 'arrowright': 'right', ' ': 'jump' };
-  const yon = keyMap[e.key.toLowerCase()];
-  if (yon) {
-    socket.emit('hareket', { kullaniciAdi: seciliBot, yon, durum: false });
-    const btn = document.querySelector(`.btn-control[data-dir="${yon}"]`);
-    if (btn) btn.classList.remove('active');
-  }
-});
 
-// ─── BAŞLANGIÇ ───
-spamListesiGuncelle();
-guncelleSayfaGorunurlugu();
-guncelleBtnOtoScroll();
+  // UI güncelle
+  function updateUIBot() {
+    const show = (noBotId, contentId) => {
+      document.getElementById(noBotId).style.display = selectedBot ? 'none' : '';
+      document.getElementById(contentId).style.display = selectedBot ? '' : 'none';
+    };
+    show('ctrl-no-bot', 'ctrl-content');
+    show('inv-no-bot', 'inv-content');
+    show('stats-no-bot', 'stats-content');
+    show('spam-no-bot', 'spam-content');
+  }
+  updateUIBot();
+
+  // Klavye kısayolları
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement.tagName === 'INPUT') return;
+    if (!selectedBot) return;
+    const keyMap = { 'w':'forward','arrowup':'forward','s':'back','arrowdown':'back','a':'left','arrowleft':'left','d':'right','arrowright':'right',' ':'jump' };
+    const dir = keyMap[e.key.toLowerCase()];
+    if (dir) {
+      e.preventDefault();
+      socket.emit('move', { username: selectedBot, direction: dir, state: true });
+      const btn = document.querySelector(`.btn-control[data-dir="${dir}"]`);
+      if (btn) btn.classList.add('active');
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (document.activeElement.tagName === 'INPUT') return;
+    if (!selectedBot) return;
+    const keyMap = { 'w':'forward','arrowup':'forward','s':'back','arrowdown':'back','a':'left','arrowleft':'left','d':'right','arrowright':'right',' ':'jump' };
+    const dir = keyMap[e.key.toLowerCase()];
+    if (dir) {
+      socket.emit('move', { username: selectedBot, direction: dir, state: false });
+      const btn = document.querySelector(`.btn-control[data-dir="${dir}"]`);
+      if (btn) btn.classList.remove('active');
+    }
+  });
 </script>
 </body>
 </html>

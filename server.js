@@ -1,14 +1,17 @@
-// ═══════════════════════════════════════════════════════════
-// GOD MODE - Minecraft Bot Yönetim Paneli v2.0
-// Render.com & Production Optimizasyonlu
-// ═══════════════════════════════════════════════════════════
+/**
+ * ╔══════════════════════════════════════════════════════════╗
+ * ║        GOD MODE v4.0 – Minecraft Bot Paneli            ║
+ * ║   Gelişmiş Proxy • AntiAFK • Spam • PvP • Envanter     ║
+ * ║      Render.com Optimize • Node.js 18+ • 29KB+        ║
+ * ╚══════════════════════════════════════════════════════════╝
+ */
 
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const { SocksProxyAgent } = require('socks-proxy-agent');
-const http = require('http');
-const { Server } = require('socket.io');
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals: { GoalBlock } } = require('mineflayer-pathfinder');
 const autoEat = require('mineflayer-auto-eat').plugin;
@@ -16,835 +19,462 @@ const armorManager = require('mineflayer-armor-manager');
 const pvp = require('mineflayer-pvp').plugin;
 const mcDataLoader = require('minecraft-data');
 
-// ═══════════════════════════════════════════════════════════
-// KONFİGÜRASYON
-// ═══════════════════════════════════════════════════════════
+// ══════════════════ KONFİGÜRASYON ══════════════════
 const CONFIG = {
   PORT: process.env.PORT || 10000,
   NODE_ENV: process.env.NODE_ENV || 'production',
-  MAX_BOTS: process.env.MAX_BOTS || 50,
-  CONNECTION_TIMEOUT: 15000,
-  RECONNECT_DELAY: 5000,
-  HEALTH_CHECK_INTERVAL: 30000,
+  MAX_BOTS: 15,
   BOT_DATA_INTERVAL: 1000,
-  MAX_RECONNECT_ATTEMPTS: 10,
+  SYSTEM_INFO_INTERVAL: 2000,
+  HEARTBEAT_INTERVAL: 30000,
   PROXY_FILE: path.join(__dirname, 'proxies.txt'),
-  LOG_RETENTION: 1000 // Maksimum log satırı
+  LOG_MAX: 500,
+  RECONNECT_BASE_DELAY: 3000,
+  RECONNECT_MAX_DELAY: 30000,
+  MAX_RECONNECT_ATTEMPTS: 5,
+  HEALTH_MEMORY_THRESHOLD: 400, // MB
+  ENABLE_PVP: true,
+  ENABLE_AUTO_EAT: true,
+  AUTO_EAT_START_AT: 14,
+  ANTI_AFK_MIN_DELAY: 20000,
+  ANTI_AFK_MAX_DELAY: 50000,
+  SPAM_MIN_INTERVAL: 500,
+  SPAM_DEFAULT_INTERVAL: 3000,
+  VIEW_DISTANCE: 'tiny',
+  CONNECT_TIMEOUT: 15000,
+  KEEP_ALIVE: true,
+  AUTH: 'offline'
 };
 
-// ═══════════════════════════════════════════════════════════
-// ÇÖKME KORUMASI & ERROR HANDLING
-// ═══════════════════════════════════════════════════════════
-process.on('uncaughtException', (err) => {
-  console.error('[KRİTİK HATA]', new Date().toISOString(), err.message);
-  console.error(err.stack);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[ASYNC HATA]', new Date().toISOString(), reason);
-});
-
-process.on('SIGTERM', () => {
-  console.log('[KAPATMA] Sunucu düzgün şekilde kapatılıyor...');
-  gracefulShutdown();
-});
-
-process.on('SIGINT', () => {
-  console.log('[KAPATMA] CTRL+C algılandı, kapatılıyor...');
-  gracefulShutdown();
-  process.exit(0);
-});
-
-// ═══════════════════════════════════════════════════════════
-// EXPRESS & SOCKET.IO KURULUMU (Render.com Optimizasyonlu)
-// ═══════════════════════════════════════════════════════════
-const app = express();
-const server = http.createServer(app);
-
-// Render.com proxy güveni için
-app.set('trust proxy', 1);
-
-const io = new Server(server, {
-  transports: ['websocket', 'polling'],
-  allowUpgrades: true,
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  connectTimeout: 45000,
-  maxHttpBufferSize: 1e6, // 1MB
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  },
-  // Render.com WebSocket optimizasyonu
-  allowEIO3: true
-});
-
-// Static dosyaları serve et (Render.com için absolute path)
-app.use(express.static(__dirname));
-
-// Health check endpoint (Render.com için)
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    uptime: process.uptime(),
-    bots: bots.size,
-    memory: process.memoryUsage().heapUsed / 1024 / 1024,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Ana sayfa
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// ═══════════════════════════════════════════════════════════
-// VERİ YAPILARI & STATE MANAGEMENT
-// ═══════════════════════════════════════════════════════════
+// ══════════════════ GLOBAL STATE ══════════════════
 const bots = new Map();
 const logBuffer = [];
 let activeConnections = 0;
+let startTime = Date.now();
 
-// ═══════════════════════════════════════════════════════════
-// YARDIMCI FONKSİYONLAR
-// ═══════════════════════════════════════════════════════════
+// ══════════════════ ERROR HANDLING ══════════════════
+process.on('uncaughtException', (err) => console.error('[FATAL]', err));
+process.on('unhandledRejection', (reason) => console.error('[ASYNC]', reason));
 
-/**
- * Merkezi log sistemi
- */
-function emitLog(kullaniciAdi, mesaj, tur = 'bilgi') {
-  const logEntry = {
-    kullaniciAdi,
-    mesaj,
-    tur,
-    zaman: new Date().toLocaleTimeString('tr-TR', { 
-      timeZone: 'Europe/Istanbul',
-      hour12: false 
-    })
+// ══════════════════ EXPRESS & SOCKET.IO ══════════════════
+const app = express();
+app.set('trust proxy', 1);
+app.use(express.static(__dirname));
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  transports: ['websocket', 'polling'],
+  pingTimeout: 30000,
+  pingInterval: 15000,
+  connectTimeout: 30000,
+  cors: { origin: '*' },
+  allowEIO3: true,
+  maxHttpBufferSize: 1e6
+});
+
+// Health check endpoint
+app.get('/health', (_, res) => res.json({
+  status: 'ok',
+  uptime: process.uptime(),
+  bots: bots.size,
+  memory: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1) + 'MB',
+  activeConnections
+}));
+
+// ══════════════════ YARDIMCI FONKSİYONLAR ══════════════════
+function addLog(user, msg, type = 'info') {
+  const entry = {
+    user, msg, type,
+    time: new Date().toLocaleTimeString('tr-TR', { hour12: false }),
+    timestamp: Date.now()
   };
-
-  // Log buffer'a ekle
-  logBuffer.push(logEntry);
-  if (logBuffer.length > CONFIG.LOG_RETENTION) {
-    logBuffer.shift();
-  }
-
-  // Tüm clientlara gönder
-  io.emit('log', logEntry);
+  logBuffer.push(entry);
+  if (logBuffer.length > CONFIG.LOG_MAX) logBuffer.shift();
+  io.emit('log', entry);
 }
 
-/**
- * Aktif bot listesini güncelle
- */
-function emitBotList() {
-  const liste = Array.from(bots.keys());
-  io.emit('bot_listesi', liste);
+function broadcastBots() {
+  io.emit('bot_list', Array.from(bots.keys()));
 }
 
-/**
- * Proxy listesini oku ve valide et
- */
-function getRandomProxy() {
+function getMemoryUsage() {
+  return (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
+}
+
+// ══════════════════ PROXY SEÇİCİ ══════════════════
+function pickRandomProxy() {
   try {
-    if (!fs.existsSync(CONFIG.PROXY_FILE)) {
-      console.warn('[PROXY] proxies.txt bulunamadı, normal IP kullanılacak');
-      return null;
-    }
-
-    const content = fs.readFileSync(CONFIG.PROXY_FILE, 'utf8');
-    const proxyList = content
+    if (!fs.existsSync(CONFIG.PROXY_FILE)) return null;
+    const lines = fs.readFileSync(CONFIG.PROXY_FILE, 'utf-8')
       .split('\n')
-      .map(line => line.trim())
-      .filter(line => line && line.startsWith('socks5://'));
-
-    if (proxyList.length === 0) {
-      console.warn('[PROXY] Geçerli proxy bulunamadı');
-      return null;
-    }
-
-    const randomIndex = Math.floor(Math.random() * proxyList.length);
-    const selectedProxy = proxyList[randomIndex];
-
-    // Proxy formatını doğrula
-    try {
-      new URL(selectedProxy);
-      return selectedProxy;
-    } catch {
-      console.warn(`[PROXY] Geçersiz format: ${selectedProxy}`);
-      return null;
-    }
-  } catch (err) {
-    console.error('[PROXY] Okuma hatası:', err.message);
-    return null;
-  }
+      .map(l => l.trim())
+      .filter(l => l.startsWith('socks5://') || l.startsWith('socks4://'));
+    if (lines.length === 0) return null;
+    const proxy = lines[Math.floor(Math.random() * lines.length)];
+    new URL(proxy); // validate
+    return proxy;
+  } catch { return null; }
 }
 
-/**
- * Memory usage checker
- */
-function checkMemoryUsage() {
-  const used = process.memoryUsage().heapUsed / 1024 / 1024;
-  if (used > 400) { // 400MB üzeri uyarı
-    console.warn(`[MEMORY] Yüksek kullanım: ${used.toFixed(2)}MB`);
-    emitLog('Sistem', `⚠️ Yüksek bellek kullanımı: ${used.toFixed(2)}MB`, 'uyari');
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// ANTİ-AFK SİSTEMİ (Gelişmiş)
-// ═══════════════════════════════════════════════════════════
-function scheduleAntiAfk(kullaniciAdi, botObj) {
-  if (!botObj.antiAfkEnabled || !botObj.bot?.entity) return;
-
-  const delay = 25000 + Math.floor(Math.random() * 35000); // 25-60 saniye
-  botObj.antiAfkTimeout = setTimeout(() => {
-    const bot = botObj.bot;
-    if (!bot?.entity || !botObj.antiAfkEnabled) return;
-
-    try {
-      // Doğal kamera hareketi
-      const yaw = bot.entity.yaw + (Math.random() - 0.5) * 0.45;
-      const pitch = Math.max(-0.7, Math.min(0.7, bot.entity.pitch + (Math.random() - 0.5) * 0.2));
-      bot.look(yaw, pitch, false);
-
-      // Spam yoksa bazen küçük adım
-      if (Math.random() < 0.25 && !botObj.spamInterval) {
-        const directions = ['forward', 'back', 'left', 'right'];
-        const randomDir = directions[Math.floor(Math.random() * directions.length)];
-        bot.setControlState(randomDir, true);
-        setTimeout(() => {
-          if (bot?.entity) bot.setControlState(randomDir, false);
-        }, 150 + Math.floor(Math.random() * 250));
-      }
-    } catch (err) {
-      // Sessizce devam et
+// ══════════════════ GELİŞMİŞ ANTİ-AFK ══════════════════
+function scheduleAdvancedAntiAFK(botObj) {
+  if (!botObj.antiAfk || !botObj.bot?.entity) return;
+  const delay = CONFIG.ANTI_AFK_MIN_DELAY + Math.random() * (CONFIG.ANTI_AFK_MAX_DELAY - CONFIG.ANTI_AFK_MIN_DELAY);
+  botObj._antiAfkTimer = setTimeout(() => {
+    const b = botObj.bot;
+    if (!b?.entity || !botObj.antiAfk) return;
+    // Rastgele bakış açısı
+    b.look(
+      b.entity.yaw + (Math.random() - 0.5) * 0.8,
+      Math.max(-0.8, Math.min(0.8, b.entity.pitch + (Math.random() - 0.5) * 0.3)),
+      false
+    );
+    // Bazen küçük bir adım veya zıplama
+    if (Math.random() < 0.3 && !botObj.spamInterval) {
+      const actions = ['forward', 'back', 'left', 'right', 'jump'];
+      const randomAction = actions[Math.floor(Math.random() * actions.length)];
+      b.setControlState(randomAction, true);
+      setTimeout(() => { if (b?.entity) b.setControlState(randomAction, false); }, 200 + Math.random() * 300);
     }
-
-    scheduleAntiAfk(kullaniciAdi, botObj);
+    scheduleAdvancedAntiAFK(botObj);
   }, delay);
 }
 
-function startAntiAfk(kullaniciAdi, botObj) {
-  if (botObj.antiAfkTimeout) clearTimeout(botObj.antiAfkTimeout);
-  botObj.antiAfkEnabled = true;
-  scheduleAntiAfk(kullaniciAdi, botObj);
-}
-
-function stopAntiAfk(botObj) {
-  botObj.antiAfkEnabled = false;
-  if (botObj.antiAfkTimeout) {
-    clearTimeout(botObj.antiAfkTimeout);
-    botObj.antiAfkTimeout = null;
+// ══════════════════ BOT OLUŞTURUCU (Güçlü) ══════════════════
+function createBot({ host, port, username, version }) {
+  if (bots.size >= CONFIG.MAX_BOTS) {
+    addLog('Sistem', `Limit dolu (${CONFIG.MAX_BOTS})`, 'error');
+    return;
   }
-}
+  if (bots.has(username)) {
+    addLog('Sistem', `${username} zaten bağlı`, 'error');
+    return;
+  }
 
-// ═══════════════════════════════════════════════════════════
-// BOT OLUŞTURUCU (Production Ready)
-// ═══════════════════════════════════════════════════════════
-function createBotInstance(ayarlar) {
-  const { host, port, kullaniciAdi, surum } = ayarlar;
   let reconnectAttempts = 0;
+  let currentProxy = null;
 
-  function startBot() {
-    // Bot limiti kontrolü
-    if (bots.size >= CONFIG.MAX_BOTS) {
-      emitLog('Sistem', `Maksimum bot sayısına ulaşıldı (${CONFIG.MAX_BOTS})`, 'hata');
-      return null;
-    }
+  const connect = () => {
+    const proxyUrl = pickRandomProxy();
+    const agent = proxyUrl ? new SocksProxyAgent(proxyUrl, { timeout: 10000 }) : null;
+    currentProxy = proxyUrl || 'doğrudan';
 
-    // Proxy seçimi
-    const selectedProxy = getRandomProxy();
-    let proxyAgent = null;
+    addLog(username, `Bağlanıyor... ${proxyUrl ? 'Proxy: ' + proxyUrl.split('@').pop() : 'Doğrudan IP'}`, 'info');
 
-    if (selectedProxy) {
-      try {
-        proxyAgent = new SocksProxyAgent(selectedProxy, {
-          timeout: 10000,
-          keepAlive: true
-        });
-        emitLog(kullaniciAdi, `🔄 Proxy: ${selectedProxy.split('@').pop() || selectedProxy}`, 'bilgi');
-      } catch (err) {
-        emitLog(kullaniciAdi, `Proxy hatası, normal IP deneniyor...`, 'uyari');
-      }
-    } else {
-      emitLog(kullaniciAdi, '🌐 Normal IP ile bağlanılıyor...', 'bilgi');
-    }
-
-    // Bot oluşturma
     const bot = mineflayer.createBot({
-      host: host,
+      host,
       port: parseInt(port) || 25565,
-      username: kullaniciAdi,
-      version: surum === 'otomatik' || !surum ? false : surum,
-      auth: 'offline',
-      hideErrors: false,
-      agent: proxyAgent,
-      connectTimeout: CONFIG.CONNECTION_TIMEOUT,
-      checkTimeoutInterval: 30000,
-      keepAlive: true,
-      viewDistance: 'tiny', // RAM optimizasyonu
+      username,
+      version: version === 'auto' ? false : version,
+      auth: CONFIG.AUTH,
+      agent,
+      connectTimeout: CONFIG.CONNECT_TIMEOUT,
+      viewDistance: CONFIG.VIEW_DISTANCE,
+      keepAlive: CONFIG.KEEP_ALIVE,
       skipValidation: true
     });
 
-    // Bot objesi oluştur
     const botObj = {
       bot,
-      yenidenBaglanmaZamani: null,
-      manuelDurdur: false,
-      ayarlar,
-      antiAfkEnabled: true,
-      antiAfkTimeout: null,
+      username,
+      antiAfk: true,
       spamInterval: null,
-      spamMesajlar: [],
-      spamAralik: 3000,
-      createdAt: Date.now(),
-      reconnectAttempts: 0
+      spamMessages: [],
+      manualStop: false,
+      _antiAfkTimer: null,
+      createdAt: Date.now()
     };
 
-    // Eski bot varsa temizle
-    if (bots.has(kullaniciAdi)) {
-      const eskiBot = bots.get(kullaniciAdi);
-      cleanupBot(eskiBot);
+    // Temizlik
+    if (bots.has(username)) {
+      const old = bots.get(username);
+      clearTimeout(old._antiAfkTimer);
+      if (old.spamInterval) clearInterval(old.spamInterval);
+      try { old.bot.end(); } catch {}
     }
+    bots.set(username, botObj);
+    broadcastBots();
 
-    bots.set(kullaniciAdi, botObj);
-    activeConnections++;
-
-    // ═══════════════════════════════════════════════════════
-    // BOT EVENT HANDLERS
-    // ═══════════════════════════════════════════════════════
-
+    // --- Bot Olayları ---
     bot.once('login', () => {
       reconnectAttempts = 0;
-      botObj.reconnectAttempts = 0;
-      emitLog(kullaniciAdi, '✅ Sunucuya başarıyla giriş yapıldı!', 'basari');
-      emitBotList();
+      addLog(username, '✅ Giriş başarılı', 'success');
+      broadcastBots();
     });
 
     bot.once('spawn', () => {
-      emitLog(kullaniciAdi, '🌍 Bot dünyaya spawn oldu.', 'basari');
+      addLog(username, '🌍 Spawn oldu', 'success');
+      const mcData = mcDataLoader(bot.version);
+      const moves = new Movements(bot, mcData);
+      moves.allowSprinting = true;
+      moves.allowParkour = true;
+      bot.pathfinder.setMovements(moves);
 
-      try {
-        // Pathfinder kurulumu
-        const mcData = mcDataLoader(bot.version);
-        const movements = new Movements(bot, mcData);
-        movements.allowSprinting = true;
-        movements.allowParkour = true;
-        movements.canDig = false;
-        movements.maxDropDown = 3;
-        bot.pathfinder.setMovements(movements);
-
-        // AutoEat kurulumu
-        if (bot.autoEat) {
-          bot.autoEat.options = {
-            priority: 'foodPoints',
-            startAt: 14,
-            bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
-          };
-          bot.autoEat.enableAutoEat();
-        }
-
-        // Anti-AFK başlat
-        startAntiAfk(kullaniciAdi, botObj);
-        emitLog(kullaniciAdi, '🛡️ Anti-AFK koruması aktif', 'basari');
-      } catch (err) {
-        emitLog(kullaniciAdi, `Spawn kurulum hatası: ${err.message}`, 'hata');
+      if (CONFIG.ENABLE_AUTO_EAT && bot.autoEat) {
+        bot.autoEat.options = {
+          priority: 'foodPoints',
+          startAt: CONFIG.AUTO_EAT_START_AT,
+          bannedFood: ['rotten_flesh', 'spider_eye', 'poisonous_potato']
+        };
+        bot.autoEat.enableAutoEat();
       }
+
+      // Anti-AFK başlat
+      botObj.antiAfk = true;
+      scheduleAdvancedAntiAFK(botObj);
     });
 
     bot.on('error', (err) => {
-      console.error(`[${kullaniciAdi}] Hata:`, err.message);
-      emitLog(kullaniciAdi, `⚠️ Hata: ${err.message}`, 'hata');
-
-      if (!botObj.manuelDurdur && reconnectAttempts < CONFIG.MAX_RECONNECT_ATTEMPTS) {
-        reconnectAttempts++;
-        botObj.reconnectAttempts = reconnectAttempts;
-        emitLog(kullaniciAdi, `🔄 Yeniden bağlanılıyor... (Deneme ${reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS})`, 'uyari');
-        
-        try { bot.quit(); } catch (e) {}
-        
-        setTimeout(() => {
-          if (bots.has(kullaniciAdi)) {
-            startBot();
-          }
-        }, CONFIG.RECONNECT_DELAY * reconnectAttempts); // Exponential backoff
-      } else if (reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
-        emitLog(kullaniciAdi, '❌ Maksimum bağlanma denemesi aşıldı, bot durduruldu', 'hata');
-        cleanupBot(botObj);
-        bots.delete(kullaniciAdi);
-        emitBotList();
-      }
+      addLog(username, `Hata: ${err.message}`, 'error');
+      if (!botObj.manualStop) tryReconnect();
     });
 
     bot.on('kicked', (reason) => {
-      const reasonText = typeof reason === 'string' ? reason : JSON.stringify(reason);
-      emitLog(kullaniciAdi, `👢 Sunucudan atıldı: ${reasonText}`, 'hata');
-      
-      if (!botObj.manuelDurdur) {
-        setTimeout(() => {
-          if (bots.has(kullaniciAdi)) {
-            startBot();
-          }
-        }, CONFIG.RECONNECT_DELAY);
+      addLog(username, `Atıldı: ${reason}`, 'error');
+      if (!botObj.manualStop) tryReconnect();
+    });
+
+    bot.on('end', () => {
+      addLog(username, 'Bağlantı kapandı', 'warning');
+      clearTimeout(botObj._antiAfkTimer);
+      if (botObj.spamInterval) clearInterval(botObj.spamInterval);
+      if (!botObj.manualStop) tryReconnect();
+      else {
+        bots.delete(username);
+        broadcastBots();
       }
     });
 
-    bot.on('end', (reason) => {
-      emitLog(kullaniciAdi, `🔌 Bağlantı kesildi: ${reason || 'Bilinmeyen sebep'}`, 'uyari');
-      
-      cleanupBot(botObj);
-
-      if (!botObj.manuelDurdur && reconnectAttempts < CONFIG.MAX_RECONNECT_ATTEMPTS) {
-        emitLog(kullaniciAdi, `🔄 ${CONFIG.RECONNECT_DELAY / 1000}s sonra yeniden bağlanılacak...`, 'uyari');
-        
-        botObj.yenidenBaglanmaZamani = setTimeout(() => {
-          if (bots.has(kullaniciAdi) && !botObj.manuelDurdur) {
-            startBot();
-          }
-        }, CONFIG.RECONNECT_DELAY);
-      } else if (botObj.manuelDurdur) {
-        bots.delete(kullaniciAdi);
-        emitBotList();
-        activeConnections--;
-      }
-    });
-
-    bot.on('chat', (oyuncu, mesaj) => {
-      if (mesaj && mesaj.trim()) {
-        emitLog(kullaniciAdi, `💬 ${oyuncu}: ${mesaj}`, 'sohbet');
-      }
-    });
-
+    bot.on('chat', (sender, msg) => addLog(username, `💬 ${sender}: ${msg}`, 'chat'));
+    bot.on('death', () => addLog(username, '💀 Öldü', 'error'));
     bot.on('message', (jsonMsg) => {
       const text = jsonMsg.toString();
       if (text && text.trim().length > 0 && !text.startsWith('{')) {
-        emitLog(kullaniciAdi, text, 'sistem');
+        addLog(username, text, 'system');
       }
     });
 
-    bot.on('death', () => {
-      emitLog(kullaniciAdi, '💀 Bot öldü!', 'hata');
-    });
-
-    bot.on('entityHurt', (entity) => {
-      if (entity === bot.entity && bot.pvp) {
-        const attacker = bot.nearestEntity(e => 
-          (e.type === 'player' || e.type === 'mob') && 
-          e !== bot.entity &&
-          bot.entity.position.distanceTo(e.position) < 5
-        );
-        
-        if (attacker) {
-          try {
-            bot.pvp.attack(attacker);
-            emitLog(kullaniciAdi, `⚔️ ${attacker.name || attacker.username || 'Saldırgan'}'a karşı savunma!`, 'uyari');
-          } catch (err) {
-            // PVP hatası sessizce geç
+    // PvP
+    if (CONFIG.ENABLE_PVP) {
+      bot.on('entityHurt', (entity) => {
+        if (entity === bot.entity && bot.pvp) {
+          const attacker = bot.nearestEntity(e => 
+            (e.type === 'player' || e.type === 'mob') && 
+            e !== bot.entity &&
+            bot.entity.position.distanceTo(e.position) < 5
+          );
+          if (attacker) {
+            try {
+              bot.pvp.attack(attacker);
+              addLog(username, `⚔️ Savunma: ${attacker.name || attacker.username || 'yaratık'}`, 'warning');
+            } catch {}
           }
         }
-      }
-    });
+      });
+    }
 
-    // Plugin yükleme
+    // Plugin yükle
     try {
       bot.loadPlugin(pathfinder);
       bot.loadPlugin(autoEat);
       bot.loadPlugin(armorManager);
       bot.loadPlugin(pvp);
-    } catch (err) {
-      emitLog(kullaniciAdi, `Plugin yükleme hatası: ${err.message}`, 'hata');
+    } catch (e) {
+      addLog(username, `Plugin hatası: ${e.message}`, 'error');
     }
 
-    return botObj;
-  }
-
-  return startBot();
-}
-
-/**
- * Bot temizlik fonksiyonu
- */
-function cleanupBot(botObj) {
-  stopAntiAfk(botObj);
-  
-  if (botObj.spamInterval) {
-    clearInterval(botObj.spamInterval);
-    botObj.spamInterval = null;
-  }
-  
-  if (botObj.yenidenBaglanmaZamani) {
-    clearTimeout(botObj.yenidenBaglanmaZamani);
-    botObj.yenidenBaglanmaZamani = null;
-  }
-
-  // Hareket kontrollerini sıfırla
-  if (botObj.bot?.entity) {
-    try {
-      ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak'].forEach(control => {
-        botObj.bot.setControlState(control, false);
-      });
-    } catch (e) {}
-  }
-}
-
-/**
- * Graceful shutdown
- */
-function gracefulShutdown() {
-  console.log('[KAPATMA] Tüm botlar durduruluyor...');
-  
-  for (const [kullaniciAdi, botObj] of bots) {
-    botObj.manuelDurdur = true;
-    cleanupBot(botObj);
-    try { botObj.bot?.quit(); } catch (e) {}
-    try { botObj.bot?.end(); } catch (e) {}
-  }
-  
-  bots.clear();
-  console.log('[KAPATMA] Tüm botlar temizlendi');
-}
-
-// ═══════════════════════════════════════════════════════════
-// PERİYODİK İŞLEMLER
-// ═══════════════════════════════════════════════════════════
-
-// Bot verilerini gönder (1 saniyede bir)
-setInterval(() => {
-  const payload = {};
-  
-  for (const [kullaniciAdi, botObj] of bots) {
-    const bot = botObj.bot;
-    if (bot?.entity && bot?.inventory) {
-      try {
-        const envanter = bot.inventory.slots
-          .slice(0, 36) // Sadece ana envanter
-          .map((esya, index) => {
-            if (!esya) return null;
-            return {
-              slot: index,
-              name: esya.name,
-              displayName: esya.displayName || esya.name,
-              count: esya.count || 1
-            };
-          });
-
-        payload[kullaniciAdi] = {
-          saglik: Math.round(bot.health * 10) / 10,
-          aclik: Math.round(bot.food * 10) / 10,
-          pozisyon: {
-            x: bot.entity.position.x.toFixed(1),
-            y: bot.entity.position.y.toFixed(1),
-            z: bot.entity.position.z.toFixed(1)
-          },
-          envanter,
-          antiAfk: botObj.antiAfkEnabled,
-          spamAktif: !!botObj.spamInterval
-        };
-      } catch (err) {
-        // Sessizce geç
-      }
-    }
-  }
-
-  if (Object.keys(payload).length > 0) {
-    io.emit('bot_verileri', payload);
-  }
-}, CONFIG.BOT_DATA_INTERVAL);
-
-// Memory check (30 saniyede bir)
-setInterval(checkMemoryUsage, CONFIG.HEALTH_CHECK_INTERVAL);
-
-// ═══════════════════════════════════════════════════════════
-// SOCKET.IO EVENT HANDLERS
-// ═══════════════════════════════════════════════════════════
-io.on('connection', (socket) => {
-  const clientIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-  console.log(`[BAĞLANTI] Yeni client: ${clientIP}`);
-  
-  emitLog('Sistem', `👤 Operatör bağlandı (${activeConnections} aktif)`, 'bilgi');
-  emitBotList();
-
-  // Son 50 log'u yeni client'a gönder
-  const recentLogs = logBuffer.slice(-50);
-  recentLogs.forEach(log => {
-    socket.emit('log', log);
-  });
-
-  // ═══════════════════════════════════════════════════
-  // Bot Bağlan
-  // ═══════════════════════════════════════════════════
-  socket.on('bot_baglan', (ayarlar) => {
-    const { host, port, kullaniciAdi, surum } = ayarlar || {};
-
-    // Validasyon
-    if (!host || !port || !kullaniciAdi) {
-      socket.emit('log', { 
-        kullaniciAdi: 'Sistem', 
-        mesaj: '❌ Tüm alanlar zorunludur: IP, Port, Kullanıcı Adı', 
-        tur: 'hata',
-        zaman: new Date().toLocaleTimeString('tr-TR')
-      });
-      return;
-    }
-
-    if (bots.has(kullaniciAdi)) {
-      socket.emit('log', { 
-        kullaniciAdi: 'Sistem', 
-        mesaj: `❌ "${kullaniciAdi}" zaten aktif!`, 
-        tur: 'hata',
-        zaman: new Date().toLocaleTimeString('tr-TR')
-      });
-      return;
-    }
-
-    if (bots.size >= CONFIG.MAX_BOTS) {
-      socket.emit('log', { 
-        kullaniciAdi: 'Sistem', 
-        mesaj: `❌ Maksimum bot limitine ulaşıldı (${CONFIG.MAX_BOTS})`, 
-        tur: 'hata',
-        zaman: new Date().toLocaleTimeString('tr-TR')
-      });
-      return;
-    }
-
-    // Host validasyonu
-    const hostRegex = /^[a-zA-Z0-9.-]+$/;
-    if (!hostRegex.test(host)) {
-      socket.emit('log', { 
-        kullaniciAdi: 'Sistem', 
-        mesaj: '❌ Geçersiz sunucu adresi!', 
-        tur: 'hata',
-        zaman: new Date().toLocaleTimeString('tr-TR')
-      });
-      return;
-    }
-
-    createBotInstance({ host, port, kullaniciAdi, surum: surum || '1.20.1' });
-    emitLog('Sistem', `🤖 "${kullaniciAdi}" botu başlatılıyor...`, 'bilgi');
-  });
-
-  // ═══════════════════════════════════════════════════
-  // Bot Sonlandır
-  // ═══════════════════════════════════════════════════
-  socket.on('bot_kes', (kullaniciAdi) => {
-    const botObj = bots.get(kullaniciAdi);
-    if (!botObj) {
-      socket.emit('log', { 
-        kullaniciAdi: 'Sistem', 
-        mesaj: `❌ "${kullaniciAdi}" bulunamadı`, 
-        tur: 'hata',
-        zaman: new Date().toLocaleTimeString('tr-TR')
-      });
-      return;
-    }
-
-    botObj.manuelDurdur = true;
-    cleanupBot(botObj);
-    
-    try { botObj.bot?.quit(); } catch (e) {}
-    try { botObj.bot?.end(); } catch (e) {}
-    
-    bots.delete(kullaniciAdi);
-    activeConnections--;
-    emitBotList();
-    emitLog('Sistem', `🛑 "${kullaniciAdi}" botu sonlandırıldı`, 'bilgi');
-  });
-
-  // ═══════════════════════════════════════════════════
-  // Chat / Komut Gönder
-  // ═══════════════════════════════════════════════════
-  socket.on('chat_gonder', ({ kullaniciAdi, mesaj }) => {
-    const botObj = bots.get(kullaniciAdi);
-    if (!botObj?.bot) return;
-
-    if (!mesaj || mesaj.trim().length === 0) return;
-    if (mesaj.length > 256) {
-      emitLog(kullaniciAdi, '⚠️ Mesaj çok uzun (max 256 karakter)', 'uyari');
-      return;
-    }
-
-    try {
-      botObj.bot.chat(mesaj.trim());
-      emitLog(kullaniciAdi, `💬 Sen: ${mesaj.trim()}`, 'komut');
-    } catch (err) {
-      emitLog(kullaniciAdi, `Mesaj gönderme hatası: ${err.message}`, 'hata');
-    }
-  });
-
-  // ═══════════════════════════════════════════════════
-  // Hareket Kontrolü
-  // ═══════════════════════════════════════════════════
-  socket.on('hareket', ({ kullaniciAdi, yon, durum }) => {
-    const botObj = bots.get(kullaniciAdi);
-    if (!botObj?.bot?.entity) return;
-
-    const gecerliYonler = ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak'];
-    if (gecerliYonler.includes(yon)) {
-      try {
-        botObj.bot.setControlState(yon, durum);
-      } catch (err) {
-        // Sessizce geç
-      }
-    }
-  });
-
-  // ═══════════════════════════════════════════════════
-  // Koordinata Git
-  // ═══════════════════════════════════════════════════
-  socket.on('git', ({ kullaniciAdi, x, y, z }) => {
-    const botObj = bots.get(kullaniciAdi);
-    if (!botObj?.bot?.entity) return;
-
-    const hedefX = parseInt(x);
-    const hedefY = parseInt(y);
-    const hedefZ = parseInt(z);
-
-    if (isNaN(hedefX) || isNaN(hedefY) || isNaN(hedefZ)) {
-      socket.emit('log', { 
-        kullaniciAdi: 'Sistem', 
-        mesaj: '❌ Geçersiz koordinatlar!', 
-        tur: 'hata',
-        zaman: new Date().toLocaleTimeString('tr-TR')
-      });
-      return;
-    }
-
-    // Y koordinatı için güvenlik kontrolü
-    const safeY = Math.max(-64, Math.min(320, hedefY));
-
-    try {
-      const goal = new GoalBlock(hedefX, safeY, hedefZ);
-      botObj.bot.pathfinder.setGoal(goal);
-      emitLog(kullaniciAdi, `🎯 [${hedefX}, ${safeY}, ${hedefZ}] konumuna gidiliyor...`, 'bilgi');
-    } catch (err) {
-      emitLog(kullaniciAdi, `Navigasyon hatası: ${err.message}`, 'hata');
-    }
-  });
-
-  // ═══════════════════════════════════════════════════
-  // Eşya At
-  // ═══════════════════════════════════════════════════
-  socket.on('esya_at', ({ kullaniciAdi, slot }) => {
-    const botObj = bots.get(kullaniciAdi);
-    if (!botObj?.bot?.inventory) return;
-
-    try {
-      const esya = botObj.bot.inventory.slots[slot];
-      if (esya) {
-        botObj.bot.tossStack(esya);
-        emitLog(kullaniciAdi, `🗑️ ${esya.displayName || esya.name} x${esya.count} atıldı`, 'uyari');
-      }
-    } catch (err) {
-      emitLog(kullaniciAdi, `Eşya atma hatası: ${err.message}`, 'hata');
-    }
-  });
-
-  // ═══════════════════════════════════════════════════
-  // Anti-AFK Toggle
-  // ═══════════════════════════════════════════════════
-  socket.on('antiafk_toggle', ({ kullaniciAdi, aktif }) => {
-    const botObj = bots.get(kullaniciAdi);
-    if (!botObj) return;
-
-    if (aktif) {
-      startAntiAfk(kullaniciAdi, botObj);
-      emitLog(kullaniciAdi, '🛡️ Anti-AFK açıldı', 'basari');
-    } else {
-      stopAntiAfk(botObj);
-      emitLog(kullaniciAdi, '🔓 Anti-AFK kapatıldı', 'uyari');
-    }
-  });
-
-  // ═══════════════════════════════════════════════════
-  // Spam Başlat
-  // ═══════════════════════════════════════════════════
-  socket.on('spam_baslat', ({ kullaniciAdi, mesajlar, aralik }) => {
-    const botObj = bots.get(kullaniciAdi);
-    if (!botObj?.bot) {
-      socket.emit('log', { 
-        kullaniciAdi: 'Sistem', 
-        mesaj: '❌ Bot bulunamadı', 
-        tur: 'hata',
-        zaman: new Date().toLocaleTimeString('tr-TR')
-      });
-      return;
-    }
-
-    if (!mesajlar || mesajlar.length === 0) {
-      socket.emit('log', { 
-        kullaniciAdi: 'Sistem', 
-        mesaj: '❌ En az 1 mesaj ekleyin', 
-        tur: 'hata',
-        zaman: new Date().toLocaleTimeString('tr-TR')
-      });
-      return;
-    }
-
-    const gercekAralik = Math.max(500, parseInt(aralik) || 3000);
-    
-    // Eski spam varsa durdur
-    if (botObj.spamInterval) clearInterval(botObj.spamInterval);
-    
-    let idx = 0;
-    botObj.spamInterval = setInterval(() => {
-      if (!botObj.bot?.entity) {
-        clearInterval(botObj.spamInterval);
-        botObj.spamInterval = null;
+    const tryReconnect = () => {
+      if (reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
+        addLog(username, 'Deneme limiti aşıldı, durduruldu', 'error');
+        bots.delete(username);
+        broadcastBots();
         return;
       }
+      const delay = Math.min(CONFIG.RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts), CONFIG.RECONNECT_MAX_DELAY);
+      reconnectAttempts++;
+      addLog(username, `${delay/1000}s sonra yeniden... (${reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS})`, 'warning');
+      setTimeout(connect, delay);
+    };
+  };
 
-      const mesaj = mesajlar[idx % mesajlar.length];
-      idx++;
-      
-      try {
-        botObj.bot.chat(mesaj);
-        emitLog(kullaniciAdi, `📨 [SPAM] ${mesaj}`, 'komut');
-      } catch (err) {
-        emitLog(kullaniciAdi, `Spam hatası: ${err.message}`, 'hata');
-      }
-    }, gercekAralik);
+  connect();
+}
 
-    emitLog(kullaniciAdi, `🚀 Spam başladı (${mesajlar.length} mesaj, ${gercekAralik}ms)`, 'basari');
+// ══════════════════ PERİYODİK VERİ AKIŞI ══════════════════
+setInterval(() => {
+  const data = {};
+  for (const [name, obj] of bots) {
+    const b = obj.bot;
+    if (!b?.entity || !b.inventory) continue;
+    const inv = b.inventory.slots.slice(0, 36).map((item, i) => item ? {
+      slot: i, name: item.name, displayName: item.displayName, count: item.count
+    } : null);
+    data[name] = {
+      health: Math.round(b.health * 10) / 10,
+      food: Math.round(b.food * 10) / 10,
+      position: { x: +b.entity.position.x.toFixed(1), y: +b.entity.position.y.toFixed(1), z: +b.entity.position.z.toFixed(1) },
+      inventory: inv,
+      antiAfk: obj.antiAfk,
+      spamActive: !!obj.spamInterval,
+      uptime: Math.floor((Date.now() - obj.createdAt) / 1000)
+    };
+  }
+  io.emit('bots_data', data);
+}, CONFIG.BOT_DATA_INTERVAL);
+
+// Sistem durumu yayını (navbar için)
+setInterval(() => {
+  const memUsed = parseFloat(getMemoryUsage());
+  io.emit('system_status', {
+    ram: memUsed,
+    totalRam: (process.memoryUsage().heapTotal / 1024 / 1024).toFixed(1),
+    bots: bots.size,
+    maxBots: CONFIG.MAX_BOTS,
+    uptime: Math.floor(process.uptime()),
+    connections: io.engine.clientsCount,
+    health: memUsed > CONFIG.HEALTH_MEMORY_THRESHOLD ? 'warning' : 'good'
+  });
+}, CONFIG.SYSTEM_INFO_INTERVAL);
+
+// ══════════════════ SOCKET.IO BAĞLANTI YÖNETİMİ ══════════════════
+io.on('connection', (socket) => {
+  activeConnections = io.engine.clientsCount;
+  addLog('Sistem', `👤 Panel açıldı (${activeConnections} çevrimiçi)`, 'info');
+  broadcastBots();
+  socket.emit('log_history', logBuffer.slice(-50));
+
+  // --- Bot bağla ---
+  socket.on('bot_connect', (data) => {
+    const { host, port, username, version } = data || {};
+    if (!host || !port || !username) {
+      return socket.emit('log', { user: 'Sistem', msg: 'Eksik bilgi!', type: 'error', time: new Date().toLocaleTimeString('tr-TR') });
+    }
+    createBot({ host, port, username, version: version || '1.20.1' });
   });
 
-  // ═══════════════════════════════════════════════════
-  // Spam Durdur
-  // ═══════════════════════════════════════════════════
-  socket.on('spam_durdur', ({ kullaniciAdi }) => {
-    const botObj = bots.get(kullaniciAdi);
-    if (!botObj) return;
+  // --- Bot kes ---
+  socket.on('bot_kill', (username) => {
+    const obj = bots.get(username);
+    if (!obj) return;
+    obj.manualStop = true;
+    clearTimeout(obj._antiAfkTimer);
+    if (obj.spamInterval) clearInterval(obj.spamInterval);
+    try { obj.bot.end(); } catch {}
+    bots.delete(username);
+    broadcastBots();
+    addLog('Sistem', `🛑 ${username} durduruldu`, 'info');
+  });
 
-    if (botObj.spamInterval) {
-      clearInterval(botObj.spamInterval);
-      botObj.spamInterval = null;
-      emitLog(kullaniciAdi, '⏹️ Spam durduruldu', 'uyari');
+  // --- Chat ---
+  socket.on('chat_send', ({ username, message }) => {
+    const obj = bots.get(username);
+    if (obj?.bot && message) {
+      obj.bot.chat(message.slice(0, 256));
+      addLog(username, `📤 ${message}`, 'command');
     }
   });
 
-  // ═══════════════════════════════════════════════════
-  // Client Disconnect
-  // ═══════════════════════════════════════════════════
-  socket.on('disconnect', (reason) => {
-    console.log(`[BAĞLANTI] Client ayrıldı: ${clientIP} (${reason})`);
-    emitLog('Sistem', `👋 Operatör ayrıldı (${activeConnections} aktif)`, 'bilgi');
+  // --- Hareket ---
+  socket.on('move', ({ username, direction, state }) => {
+    const obj = bots.get(username);
+    if (obj?.bot?.entity && ['forward','back','left','right','jump','sprint','sneak'].includes(direction)) {
+      obj.bot.setControlState(direction, state);
+    }
+  });
+
+  // --- Git ---
+  socket.on('goto', ({ username, x, y, z }) => {
+    const obj = bots.get(username);
+    if (!obj?.bot?.entity) return;
+    const ix = parseInt(x), iy = parseInt(y), iz = parseInt(z);
+    if (isNaN(ix) || isNaN(iy) || isNaN(iz)) return;
+    const goal = new GoalBlock(ix, Math.max(-64, Math.min(320, iy)), iz);
+    obj.bot.pathfinder.setGoal(goal);
+    addLog(username, `🎯 Gidiliyor: ${ix}, ${iy}, ${iz}`, 'info');
+  });
+
+  // --- Eşya at ---
+  socket.on('drop_item', ({ username, slot }) => {
+    const obj = bots.get(username);
+    if (!obj?.bot?.inventory) return;
+    const item = obj.bot.inventory.slots[slot];
+    if (item) {
+      obj.bot.tossStack(item);
+      addLog(username, `🗑️ Atıldı: ${item.displayName} x${item.count}`, 'warning');
+    }
+  });
+
+  // --- AntiAFK toggle ---
+  socket.on('antiafk_toggle', ({ username, active }) => {
+    const obj = bots.get(username);
+    if (!obj) return;
+    obj.antiAfk = active;
+    clearTimeout(obj._antiAfkTimer);
+    if (active) scheduleAdvancedAntiAFK(obj);
+    addLog(username, active ? '🛡️ AntiAFK açık' : '🔓 AntiAFK kapalı', 'info');
+  });
+
+  // --- Spam başlat ---
+  socket.on('spam_start', ({ username, messages, interval }) => {
+    const obj = bots.get(username);
+    if (!obj?.bot) return;
+    if (!messages?.length) return;
+    if (obj.spamInterval) clearInterval(obj.spamInterval);
+    const delay = Math.max(CONFIG.SPAM_MIN_INTERVAL, parseInt(interval) || CONFIG.SPAM_DEFAULT_INTERVAL);
+    let idx = 0;
+    obj.spamMessages = [...messages];
+    obj.spamInterval = setInterval(() => {
+      if (!obj.bot?.entity) {
+        clearInterval(obj.spamInterval);
+        obj.spamInterval = null;
+        return;
+      }
+      const msg = obj.spamMessages[idx % obj.spamMessages.length];
+      idx++;
+      try { obj.bot.chat(msg); } catch {}
+      addLog(username, `📨 [SPAM] ${msg}`, 'command');
+    }, delay);
+    addLog(username, `🚀 Spam başladı (${messages.length} mesaj, ${delay}ms)`, 'success');
+  });
+
+  // --- Spam durdur ---
+  socket.on('spam_stop', (username) => {
+    const obj = bots.get(username);
+    if (!obj?.spamInterval) return;
+    clearInterval(obj.spamInterval);
+    obj.spamInterval = null;
+    addLog(username, '⏹️ Spam durdu', 'warning');
+  });
+
+  // --- Sistem komutları (panel içi) ---
+  socket.on('get_system_info', () => {
+    socket.emit('system_status', {
+      ram: parseFloat(getMemoryUsage()),
+      totalRam: (process.memoryUsage().heapTotal / 1024 / 1024).toFixed(1),
+      bots: bots.size,
+      maxBots: CONFIG.MAX_BOTS,
+      uptime: Math.floor(process.uptime()),
+      connections: io.engine.clientsCount
+    });
+  });
+
+  socket.on('disconnect', () => {
+    activeConnections = io.engine.clientsCount;
+    addLog('Sistem', `👋 Panel kapandı (${activeConnections} çevrimiçi)`, 'info');
   });
 });
 
-// ═══════════════════════════════════════════════════════════
-// SUNUCU BAŞLATMA
-// ═══════════════════════════════════════════════════════════
+// ══════════════════ SUNUCU BAŞLAT ══════════════════
 server.listen(CONFIG.PORT, '0.0.0.0', () => {
-  console.log('═'.repeat(50));
-  console.log('⚡ GOD MODE - Minecraft Bot Yönetim Paneli');
-  console.log('═'.repeat(50));
-  console.log(`📡 Port: ${CONFIG.PORT}`);
-  console.log(`🌍 Ortam: ${CONFIG.NODE_ENV}`);
-  console.log(`🤖 Max Bot: ${CONFIG.MAX_BOTS}`);
-  console.log(`💾 Bellek: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB`);
-  console.log(`⏰ Başlangıç: ${new Date().toLocaleString('tr-TR')}`);
-  console.log('═'.repeat(50));
-  console.log('✅ Sunucu hazır, bağlantı bekleniyor...');
+  console.log(`⚡ GOD MODE v4.0 | Port: ${CONFIG.PORT} | Max Bot: ${CONFIG.MAX_BOTS}`);
+  console.log(`Başlangıç Bellek: ${getMemoryUsage()}MB`);
 });
 
-// Render.com için export
-module.exports = app;
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  for (const [name, obj] of bots) {
+    obj.manualStop = true;
+    try { obj.bot.end(); } catch {}
+  }
+  server.close();
+});
