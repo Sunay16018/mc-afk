@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs'); // Dosya okumak için
+const { SocksProxyAgent } = require('socks-proxy-agent'); // Proxy kullanmak için
 const http = require('http');
 const { Server } = require('socket.io');
 const mineflayer = require('mineflayer');
@@ -30,6 +32,9 @@ app.use(express.static('.'));
 
 // ─── DURUM YÖNETİMİ ───
 const bots = new Map();
+let botSayaci = 0;
+let aktifProxyIndex = 0;
+
 
 function emitLog(kullaniciAdi, mesaj, tur = 'bilgi') {
   io.emit('log', { kullaniciAdi, mesaj, tur, zaman: new Date().toLocaleTimeString('tr-TR') });
@@ -80,32 +85,99 @@ function stopAntiAfk(botObj) {
   }
 }
 
-// ─── BOT OLUŞTURUCU ───
+// ─── BOT OLUŞTURUCU (AKILLI PROXY SİSTEMİ) ───
 function createBotInstance(ayarlar) {
   const { host, port, kullaniciAdi, surum } = ayarlar;
 
-  const bot = mineflayer.createBot({
-    host,
-    port: parseInt(port),
-    username: kullaniciAdi,
-    version: surum,
-    auth: 'offline',
-    hideErrors: true
-  });
+  function startBot() {
+    let proxyAgent = null;
+    let secilenProxy = "Yok (Normal IP)";
 
-  const botObj = {
-    bot,
-    yenidenBaglanmaZamani: null,
-    manuelDurdur: false,
-    ayarlar,
-    antiAfkEnabled: true,
-    antiAfkTimeout: null,
-    spamInterval: null,
-    spamMesajlar: [],
-    spamAralik: 3000
-  };
-  bots.set(kullaniciAdi, botObj);
-  emitBotList();
+    try {
+      if (fs.existsSync('proxies.txt')) {
+        const proxyList = fs.readFileSync('proxies.txt', 'utf8').split('\n').filter(p => p.trim() !== '');
+        if (proxyList.length > 0) {
+          // 3800 proxy arasından RASTGELE seçim
+          const randomIndex = Math.floor(Math.random() * proxyList.length);
+          secilenProxy = proxyList[randomIndex].trim();
+          proxyAgent = new SocksProxyAgent(secilenProxy);
+        }
+      }
+    } catch (err) {
+      console.error('Proxy okuma hatası:', err);
+    }
+
+    emitLog(kullaniciAdi, `Bağlantı deneniyor... Proxy: ${secilenProxy}`, 'bilgi');
+
+    const bot = mineflayer.createBot({
+      host,
+      port: parseInt(port),
+      username: kullaniciAdi,
+      version: surum === 'otomatik' ? false : surum,
+      auth: 'offline',
+      hideErrors: true,
+      agent: proxyAgent,
+      connectTimeout: 30000 // 15 saniyede bağlanmazsa yeni proxy denesin
+    });
+
+    const botObj = {
+      bot,
+      yenidenBaglanmaZamani: null,
+      manuelDurdur: false,
+      ayarlar,
+      antiAfkEnabled: true,
+      antiAfkTimeout: null,
+      spamInterval: null,
+      spamMesajlar: [],
+      spamAralik: 3000
+    };
+
+    bots.set(kullaniciAdi, botObj);
+
+    // ─── HATA & YENİDEN DENEME MANTIĞI ───
+    bot.on('error', (err) => {
+      emitLog(kullaniciAdi, `Bağlantı Hatası: ${err.message}`, 'hata');
+      if (!botObj.manuelDurdur) {
+        emitLog(kullaniciAdi, `IP dolu veya proxy bozuk. Yeni IP deneniyor...`, 'uyari');
+        bot.quit();
+        setTimeout(() => startBot(), 2000); // 2 saniye sonra başka bir rastgele proxy ile başla
+      }
+    });
+
+    bot.on('kicked', (reason) => {
+      emitLog(kullaniciAdi, `Sunucudan atıldı. 5sn sonra yeni proxy denenecek.`, 'hata');
+      if (!botObj.manuelDurdur) {
+        setTimeout(() => startBot(), 5000);
+      }
+    });
+
+    bot.on('login', () => {
+      emitLog(kullaniciAdi, `Sunucuya başarıyla girildi!`, 'basari');
+      emitBotList();
+    });
+
+    // Pluginleri yükle
+    bot.loadPlugin(pathfinder);
+    bot.loadPlugin(autoEat);
+    bot.loadPlugin(armorManager);
+    bot.loadPlugin(pvp);
+
+    // Bot Spawn Olayı
+    bot.once('spawn', () => {
+      emitLog(kullaniciAdi, 'Bot dünyada doğdu.', 'basari');
+      const mcData = mcDataLoader(bot.version);
+      const movements = new Movements(bot, mcData);
+      bot.pathfinder.setMovements(movements);
+    });
+
+    // Chat Mesajlarını Panale Gönder
+    bot.on('chat', (username, message) => {
+      emitLog(kullaniciAdi, `[CHAT] ${username}: ${message}`, 'mesaj');
+    });
+  }
+
+  startBot(); 
+}
 
   // Eklentileri Yükle
   bot.loadPlugin(pathfinder);

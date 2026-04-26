@@ -17,6 +17,7 @@
   "author": "God Mode Developer",
   "license": "MIT",
   "dependencies": {
+    "socks-proxy-agent": "^8.0.4",
     "express": "^4.18.2",
     "mineflayer": "^4.14.0",
     "mineflayer-armor-manager": "^1.0.0",
