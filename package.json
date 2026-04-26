@@ -3,17 +3,14 @@
   "version": "1.0.0",
   "description": "Ultra Advanced Web-Based Minecraft Bot Management Panel",
   "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": [
-    "minecraft",
-    "mineflayer",
-    "bot",
-    "panel",
-    "socket.io"
-  ],
+  "keywords": ["minecraft", "mineflayer", "bot", "panel", "socket.io"],
   "author": "God Mode Developer",
   "license": "MIT",
   "dependencies": {
